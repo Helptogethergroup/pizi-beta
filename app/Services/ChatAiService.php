@@ -9,14 +9,85 @@ use Illuminate\Support\Facades\Log;
 class ChatAiService
 {
     private $geminiApiKey;
-    private $geminiUrl;
+
+    /** Set once no model answers, so one visitor message does not wait for the AI twice. */
+    private bool $aiDown = false;
 
     public function __construct()
     {
         $this->geminiApiKey = env('GEMINI_API_KEY');
-        // GEMINI_MODEL in .env changes the model without a code change (Google retires old ones)
-        $this->geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/'
-            . env('GEMINI_MODEL', 'gemini-2.5-flash') . ':generateContent';
+    }
+
+    /**
+     * The models to try, in order: the first one that answers wins. Set GEMINI_MODEL and GEMINI_FALLBACK_MODEL in
+     * the env file to change them without a code change (Google retires old models and busy ones answer 503).
+     */
+    private function models(): array
+    {
+        return array_values(array_unique(array_filter([
+            env('GEMINI_MODEL', 'gemini-3.8-flash'),
+            env('GEMINI_FALLBACK_MODEL', 'gemini-flash-latest'),
+        ])));
+    }
+
+    /**
+     * Asks Gemini and returns the answer's text, or null when no model could give one. Each try has a short time
+     * limit: a slow model must never leave the visitor watching the typing dots.
+     */
+    private function askGemini(array $body, int $seconds): ?string
+    {
+        if (!$this->geminiApiKey || $this->aiDown) {
+            return null;
+        }
+        foreach ($this->models() as $model) {
+            $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . $model . ':generateContent';
+            try {
+                // the key goes in a header, never in the address: addresses end up in error logs
+                $send = fn (array $payload) => Http::withHeaders(['x-goog-api-key' => (string) $this->geminiApiKey])
+                    ->connectTimeout(5)->timeout($seconds)->post($url, $payload);
+                $response = $send($body);
+                // some newer models do not accept the "no thinking" setting: ask again without it
+                if ($response->status() === 400 && str_contains(strtolower((string) $response->json('error.message')), 'thinking')) {
+                    $plain = $body;
+                    unset($plain['generationConfig']['thinkingConfig']);
+                    $response = $send($plain);
+                }
+                $text = $response->successful() ? $response->json('candidates.0.content.parts.0.text') : null;
+                if (is_string($text) && trim($text) !== '') {
+                    return $text;
+                }
+                Log::warning('Gemini: no answer from ' . $model . ', HTTP ' . $response->status() . ' ' . $response->json('error.message'));
+                if (in_array($response->status(), [401, 403], true)) {
+                    break; // the key itself is refused: another model will not help
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Gemini: ' . $model . ' failed: ' . $e->getMessage());
+            }
+        }
+        $this->aiDown = true;
+
+        return null;
+    }
+
+    /** When the AI cannot read the message: the city, the gender and the type, read from the words themselves. */
+    private function readSearchWords(string $message): array
+    {
+        $lower = ' ' . mb_strtolower($message) . ' ';
+        $found = ['city' => null, 'gender' => null];
+        $cities = DB::table('cities')->pluck('name')->sortByDesc(fn ($n) => mb_strlen($n)); // "Greater Noida" before "Noida"
+        foreach ($cities as $name) {
+            if (str_contains($lower, mb_strtolower($name))) {
+                $found['city'] = $name;
+                break;
+            }
+        }
+        if (preg_match('/\b(girls?|female|ladies|women)\b|लड़कियों|गर्ल्स/u', $lower)) {
+            $found['gender'] = 'female';
+        } elseif (preg_match('/\b(boys?|male|gents|men)\b|लड़कों|बॉयज/u', $lower)) {
+            $found['gender'] = 'male';
+        }
+
+        return $found;
     }
 
     /** What the visitor reads when the AI cannot answer (bad key, Google down). Searching PGs still works. */
@@ -49,6 +120,10 @@ class ChatAiService
             }
         }
 
+        if ($looksLikePgQuery) {
+            $intent += $this->readSearchWords($message);
+        }
+
         if ($intent['type'] === 'pg_search' || $looksLikePgQuery) {
             // It's a PG search query - extract parameters and search
             return $this->searchPGsSmart($message, $language, $intent);
@@ -77,39 +152,22 @@ Respond ONLY with JSON (no markdown, no extra text):
   \"property_type\": \"pg\" or \"hostel\" or \"coliving\" or null
 }";
 
-        try {
-            // the key goes in a header, never in the address: addresses end up in error logs
-            $response = Http::withHeaders(['x-goog-api-key' => (string) $this->geminiApiKey])->timeout(20)->retry(2, 500)->post(
-                $this->geminiUrl,
-                [
-                    'contents' => [[
-                        'parts' => [['text' => $prompt]]
-                    ]],
-                    'generationConfig' => [
-                        'maxOutputTokens' => 500,
-                        'thinkingConfig' => ['thinkingBudget' => 0]
-                    ]
-                ]
-            );
+        $text = $this->askGemini([
+            'contents' => [['parts' => [['text' => $prompt]]]],
+            'generationConfig' => ['maxOutputTokens' => 500, 'thinkingConfig' => ['thinkingBudget' => 0]],
+        ], 8);
 
-            if ($response->successful()) {
-                $text = $response->json('candidates.0.content.parts.0.text');
+        if ($text !== null) {
+            // Gemini kabhi kabhi ```json ... ``` mein wrap kar deta hai, usko clean karo
+            $text = trim(preg_replace('/```json\s*|```\s*/', '', $text));
+            $json = json_decode($text, true);
 
-                // Gemini kabhi kabhi ```json ... ``` mein wrap kar deta hai, usko clean karo
-                $text = preg_replace('/```json\s*|```\s*/', '', $text);
-                $text = trim($text);
-
-                $json = json_decode($text, true);
-
-                if (is_array($json)) {
-                    $json['_source'] = 'gemini';
-                    return $json;
-                }
-
-                Log::warning('Intent detection JSON parse failed. Raw text: ' . json_encode($text));
+            if (is_array($json) && isset($json['type'])) {
+                $json['_source'] = 'gemini';
+                return $json;
             }
-        } catch (\Exception $e) {
-            Log::error('Intent detection error: ' . $e->getMessage());
+
+            Log::warning('Intent detection JSON parse failed. Raw text: ' . json_encode($text));
         }
 
         return ['type' => 'general', '_source' => 'fallback'];
@@ -263,36 +321,17 @@ Respond ONLY with JSON (no markdown, no extra text):
         $langReminder = $language === 'hi' ? ' (कृपया सिर्फ हिंदी में जवाब दें।)' : ' (Please reply in English only.)';
         $contents[] = ['role' => 'user', 'parts' => [['text' => $message . $langReminder]]];
 
-        try {
-            $response = Http::withHeaders(['x-goog-api-key' => (string) $this->geminiApiKey])->timeout(30)->retry(2, 500)->post(
-                $this->geminiUrl,
-                [
-                    'contents' => $contents,
-                    'generationConfig' => [
-                        'temperature' => 0.7,
-                        'maxOutputTokens' => 1024,
-                        // Without this, gemini-2.5-flash burns most of the token
-                        // budget on internal "thinking" and cuts the real answer
-                        // off mid-sentence (finishReason: MAX_TOKENS).
-                        'thinkingConfig' => ['thinkingBudget' => 0],
-                    ]
-                ]
-            );
+        $text = $this->askGemini([
+            'contents' => $contents,
+            'generationConfig' => [
+                'temperature' => 0.7,
+                'maxOutputTokens' => 1024,
+                // Without this, flash models burn most of the token budget on internal "thinking" and cut the
+                // real answer off mid-sentence (finishReason: MAX_TOKENS).
+                'thinkingConfig' => ['thinkingBudget' => 0],
+            ],
+        ], 15);
 
-            if ($response->successful()) {
-                $body = $response->json();
-                if (isset($body['candidates'][0]['content']['parts'][0]['text'])) {
-                    return $body['candidates'][0]['content']['parts'][0]['text'];
-                }
-            }
-
-            Log::error('Gemini Error: no answer, HTTP ' . $response->status());
-
-            return $this->unavailable($language);
-        } catch (\Exception $e) {
-            Log::error('Gemini Error: ' . $e->getMessage());
-
-            return $this->unavailable($language);
-        }
+        return $text ?? $this->unavailable($language);
     }
 }

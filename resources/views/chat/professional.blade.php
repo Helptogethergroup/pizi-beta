@@ -419,7 +419,7 @@
         const input = document.getElementById('msg-input');
         const sendBtn = document.getElementById('send-btn');
         const msg = input.value.trim();
-        if (!msg) return;
+        if (!msg || sendBtn.disabled) return; // one question at a time (the Enter key too)
 
         const chatBody = document.getElementById('chat-body');
         const userMsg = document.createElement('div');
@@ -432,9 +432,14 @@
         chatBody.scrollTop = chatBody.scrollHeight;
         showTyping();
 
+        // never leave the visitor watching the dots: give up after 60 seconds
+        const giveUp = new AbortController();
+        const timer = setTimeout(() => giveUp.abort(), 60000);
+
         try {
             const response = await fetch('/api/chat/send', {
                 method: 'POST',
+                signal: giveUp.signal,
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
                 body: JSON.stringify({
                     message: msg,
@@ -456,6 +461,8 @@
                 pziHistory.push({ sender: 'user', message: msg });
                 pziHistory.push({ sender: 'bot', message: data.message });
                 sessionStorage.setItem('pizi_chat_history', JSON.stringify(pziHistory.slice(-20)));
+            } else {
+                throw new Error('no answer');
             }
 
             chatBody.scrollTop = chatBody.scrollHeight;
@@ -465,8 +472,10 @@
             errorMsg.className = 'msg msg-bot';
             errorMsg.textContent = currentLang === 'hi' ? 'कोशिश करें फिर से। 🙏' : 'Please try again. 🙏';
             chatBody.appendChild(errorMsg);
+            chatBody.scrollTop = chatBody.scrollHeight;
         }
 
+        clearTimeout(timer);
         sendBtn.disabled = false;
     };
 })();

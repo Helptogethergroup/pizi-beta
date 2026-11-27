@@ -161,7 +161,7 @@ class BlogController extends Controller
         try {
             // the key goes in a header, never in the address: addresses end up in error logs
             $response = \Illuminate\Support\Facades\Http::withHeaders(['x-goog-api-key' => $apiKey])->timeout(30)->retry(2, 500)->post(
-                'https://generativelanguage.googleapis.com/v1beta/models/' . env('GEMINI_MODEL', 'gemini-2.5-flash') . ':generateContent',
+                'https://generativelanguage.googleapis.com/v1beta/models/' . env('GEMINI_MODEL', 'gemini-3.8-flash') . ':generateContent',
                 [
                     'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
                     'generationConfig' => [
