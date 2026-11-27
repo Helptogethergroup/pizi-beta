@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Receipt — {{ $payment->receipt_number }}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f6f5f1; }
@@ -15,6 +14,8 @@
         }
     </style>
 @include('partials.emoji-icons')
+{{-- Tailwind, built into our own file (scripts/build-css.sh). Keep it last in the head. --}}
+<link rel="stylesheet" href="{{ asset('css/pizi-plain.css') }}?v={{ @filemtime(public_path('css/pizi-plain.css')) }}">
 </head>
 <body class="py-8">
     <div class="max-w-2xl mx-auto bg-white p-8 rounded-2xl shadow-lg print-area">

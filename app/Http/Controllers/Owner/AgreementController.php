@@ -269,7 +269,7 @@ class AgreementController extends Controller
         $this->authorize_owner($agreement);
         $agreement->load('tenant', 'property', 'owner', 'signatures');
 
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('owner.agreements.preview', compact('agreement'))
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('owner.agreements.preview', compact('agreement') + ['forPdf' => true])
             ->setPaper('a4', 'portrait');
 
         return $pdf->download($agreement->agreement_number . '.pdf');

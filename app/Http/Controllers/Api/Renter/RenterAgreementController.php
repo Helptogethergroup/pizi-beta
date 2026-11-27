@@ -88,7 +88,7 @@ class RenterAgreementController extends Controller
             return $this->fail('Agreement not found.', 404, 'not_found');
         }
 
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('owner.agreements.preview', compact('agreement'))->setPaper('a4', 'portrait');
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('owner.agreements.preview', compact('agreement') + ['forPdf' => true])->setPaper('a4', 'portrait');
 
         return response($pdf->output(), 200, [
             'Content-Type' => 'application/pdf',

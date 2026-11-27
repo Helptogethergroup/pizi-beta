@@ -5,7 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pizi Dashboard Guide</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @media print {
             .no-print { display: none !important; }
@@ -13,6 +12,8 @@
         }
     </style>
 @include('partials.emoji-icons')
+{{-- Tailwind, built into our own file (scripts/build-css.sh). Keep it last in the head. --}}
+<link rel="stylesheet" href="{{ asset('css/pizi-plain.css') }}?v={{ @filemtime(public_path('css/pizi-plain.css')) }}">
 </head>
 <body class="bg-gray-50 p-6">
 

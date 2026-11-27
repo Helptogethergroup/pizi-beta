@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pay Rent — {{ $bill->bill_number }}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
 @include('partials.emoji-icons')
+{{-- Tailwind, built into our own file (scripts/build-css.sh). Keep it last in the head. --}}
+<link rel="stylesheet" href="{{ asset('css/pizi-plain.css') }}?v={{ @filemtime(public_path('css/pizi-plain.css')) }}">
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
 

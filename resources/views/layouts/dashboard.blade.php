@@ -6,14 +6,6 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'Dashboard') Pizi</title>
     <link rel="icon" type="image/png" href="{{ asset('assets/images/logo.png') }}">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = { theme: { extend: { colors: {
-            ink: { 950: '#0a1a30', 900: '#0f2748', 800: '#15355f' },
-            coral: { 500: '#ff6b5b', 600: '#ed4e3d' },
-            cream: '#fefcf6'
-        }, fontFamily: { display: ['Fraunces','serif'], sans: ['Plus Jakarta Sans','sans-serif'] } } } }
-    </script>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f6f5f1; }
@@ -51,6 +43,8 @@
     </style>
     @stack('head')
 @include('partials.emoji-icons')
+{{-- Tailwind, built into our own file (scripts/build-css.sh). Keep it last in the head. --}}
+<link rel="stylesheet" href="{{ asset('css/pizi-panel.css') }}?v={{ @filemtime(public_path('css/pizi-panel.css')) }}">
 </head>
 <body class="text-ink-950">
 

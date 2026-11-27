@@ -9,14 +9,6 @@
     <link rel="manifest" href="{{ url('/manifest.json') }}">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230f2748'/%3E%3Cpath d='M50 25 L70 50 L60 50 L60 75 L40 75 L40 50 L30 50 Z' fill='%23ff6b5b'/%3E%3C/svg%3E">
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = { theme: { extend: { colors: {
-            ink: { 950: '#0a1a30', 900: '#0f2748', 800: '#15355f' },
-            coral: { 500: '#ff6b5b', 600: '#ed4e3d' },
-            cream: '#fefcf6'
-        }, fontFamily: { display: ['Fraunces','serif'], sans: ['Plus Jakarta Sans','sans-serif'] } } } }
-    </script>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
@@ -24,6 +16,8 @@
         h1, h2, h3, .font-display { font-family: 'Fraunces', serif; letter-spacing: -0.02em; }
     </style>
 @include('partials.emoji-icons')
+{{-- Tailwind, built into our own file (scripts/build-css.sh). Keep it last in the head. --}}
+<link rel="stylesheet" href="{{ asset('css/pizi-panel.css') }}?v={{ @filemtime(public_path('css/pizi-panel.css')) }}">
 </head>
 <body class="text-ink-950">
 

@@ -56,24 +56,6 @@ if ('serviceWorker' in navigator) {
 
 <link rel="icon" type="image/png" href="{{ asset('assets/images/logo.png') }}">
 
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-    tailwind.config = {
-        theme: {
-            extend: {
-                colors: {
-                    ink: { 950: '#0a1a30', 900: '#0f2748', 800: '#15355f', 700: '#1d4577' },
-                    coral: { 50: '#fff3f1', 100: '#ffe3df', 400: '#ff8c7e', 500: '#ff6b5b', 600: '#ed4e3d', 700: '#c93b2c' },
-                    cream: '#fefcf6',
-                },
-                fontFamily: {
-                    display: ['"Fraunces"', 'serif'],
-                    sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
-                },
-            }
-        }
-    }
-</script>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
@@ -101,6 +83,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <!-- End Google Tag Manager -->
 
 @include('partials.emoji-icons', ['fa' => false])
+{{-- Tailwind, built into our own file (scripts/build-css.sh). Keep it last in the head. --}}
+<link rel="stylesheet" href="{{ asset('css/pizi-site.css') }}?v={{ @filemtime(public_path('css/pizi-site.css')) }}">
 </head>
 <body class="text-ink-950 antialiased">
 
