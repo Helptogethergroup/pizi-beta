@@ -245,7 +245,13 @@
     <select name="nearby_university_id" class="px-4 py-2.5 text-sm border border-ink-900/10 rounded-xl bg-cream">
         <option value="">University</option>
         @php
-            $universities = \DB::table('universities')->orderBy('name')->get();
+            // only universities that have a PG on the website (this list also feeds the campus strip below);
+            // a newly added one appears as soon as a live PG is linked to it
+            $universities = \DB::table('universities')
+                ->whereExists(fn ($q) => $q->selectRaw('1')->from('properties')
+                    ->whereColumn('properties.nearby_university_id', 'universities.id')
+                    ->where('properties.is_active', 1)->whereNull('properties.deleted_at'))
+                ->orderBy('name')->get();
         @endphp
         @foreach($universities as $uni)
             <option value="{{ $uni->id }}">{{ $uni->abbreviation }}</option>
@@ -470,7 +476,7 @@
             </div>
 
             {{-- ===== BOX 3: BY CITY ===== --}}
-            <div class="bg-white/[0.06] backdrop-blur border border-white/10 rounded-3xl p-5 shadow-xl shadow-black/20">
+            <div class="bg-white/[0.06] backdrop-blur border border-white/10 rounded-3xl p-3 sm:p-5 shadow-xl shadow-black/20">
                 <h3 class="font-display font-bold text-xl text-slate-900 mb-4 flex items-center gap-2"><svg class="inline-block w-[1em] h-[1em] align-[-0.15em]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg> By City</h3>
                 <div class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-x-2 gap-y-3">
                   @php
@@ -483,9 +489,10 @@
                   @foreach($cities->sortBy(fn ($c) => [empty($cityCounts[$c->slug]) ? 1 : 0, $c->display_order, $c->id]) as $city)
                     <a href="{{ route('city.show', $city->slug) }}" class="group relative flex justify-center"
                        title="{{ $city->name }}@if(!empty($cityCounts[$city->slug])): {{ $cityCounts[$city->slug] }} {{ $cityCounts[$city->slug] === 1 ? 'PG' : 'PGs' }}@endif">
-                        <span class="flex flex-col items-center justify-center w-20 h-20 rounded-full bg-[#f6f6f6] text-center group-hover:bg-coral-50 group-hover:-translate-y-1 group-hover:shadow-lg transition duration-300">
-                            @include('partials.city-icon', ['slug' => $city->slug, 'class' => 'w-10 h-10'])
-                            <span class="mt-0.5 text-[11px] font-bold leading-tight text-slate-900">{{ $city->name }}</span>
+                        {{-- always a circle: it shrinks with its column on small phones --}}
+                        <span class="flex flex-col items-center justify-center w-full max-w-[5rem] aspect-square rounded-full bg-[#f6f6f6] text-center group-hover:bg-coral-50 group-hover:-translate-y-1 group-hover:shadow-lg transition duration-300">
+                            @include('partials.city-icon', ['slug' => $city->slug, 'class' => 'w-8 h-8 sm:w-10 sm:h-10'])
+                            <span class="mt-0.5 text-[10px] sm:text-[11px] font-bold leading-tight text-slate-900">{{ $city->name }}</span>
                         </span>
                         @if(!empty($cityCounts[$city->slug]))
                             <span class="absolute -top-1 right-0 min-w-[1.25rem] px-1 py-0.5 rounded-full bg-ink-950 text-white text-[10px] font-bold leading-none text-center">{{ $cityCounts[$city->slug] }}</span>
