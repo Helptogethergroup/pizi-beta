@@ -1,6 +1,6 @@
 @extends('layouts.app')
-@section('title', 'Verified PGs in Delhi NCR | Affordable PG Accommodation')
-@section('meta_description', 'Find verified PGs in Delhi NCR with affordable rents, real photos and zero brokerage. Explore PGs in Delhi, Noida, Gurgaon and Ghaziabad with free site visits on Pizi.')
+@section('title', 'Verified PGs in India | Affordable PG Accommodation')
+@section('meta_description', 'Find verified PGs with affordable rents, real photos and zero brokerage in Delhi NCR, Mumbai, Bangalore, Pune, Hyderabad, Chennai and more cities.')
 
 @push('head')
 <style>
@@ -214,7 +214,7 @@
                     Find your perfect PG that <span id="pzTyped" class="italic text-coral-600" data-phrases='["feels like home.","fits your budget.","is truly verified.","is close to campus."]'>feels like home.</span><span class="pz-caret" aria-hidden="true"></span>
                 </h1>
                 <p class="pz-anim pz-d3 text-lg text-ink-900/70 mt-6 max-w-xl leading-relaxed">
-                    Verified listings, real photos, honest rents. Across Delhi, Noida, Gurgaon &amp; Ghaziabad — book a free site visit in 60 seconds.
+                    Verified listings, real photos, honest rents. Delhi NCR and cities across India — book a free site visit in 60 seconds.
                 </p>
 <form id="pzHeroForm" action="{{ route('search') }}" method="GET" class="mt-8 bg-white shadow-xl shadow-ink-900/5 rounded-2xl p-3 flex flex-wrap gap-2 w-full max-w-5xl">
     
@@ -472,44 +472,26 @@
             {{-- ===== BOX 3: BY CITY ===== --}}
             <div class="bg-white/[0.06] backdrop-blur border border-white/10 rounded-3xl p-6 lg:p-8 shadow-xl shadow-black/20">
                 <h3 class="font-display font-bold text-xl text-slate-900 mb-5 flex items-center gap-2"><svg class="inline-block w-[1em] h-[1em] align-[-0.15em]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg> By City</h3>
-                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 lg:gap-4">
+                <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3 lg:gap-4">
                   @php
     $cityCounts = \Illuminate\Support\Facades\Cache::remember('home_city_pg_counts', 120, fn () => \DB::table('properties')
         ->join('cities', 'cities.id', '=', 'properties.city_id')
         ->where('properties.is_active', 1)->whereNull('properties.deleted_at')
         ->selectRaw('cities.slug as slug, count(*) as c')->groupBy('cities.slug')->pluck('c', 'slug')->toArray());
 @endphp
-                  @foreach([
-    ['Delhi', 'delhi', 'delhi-img.jpeg'],
-    ['Noida', 'noida', 'noida-img.jpeg'],
-    ['Gurgaon', 'gurgaon', 'gurgaon-img.jpeg'],
-    ['Ghaziabad', 'ghaziabad', 'ghaziabad-img.jpeg'],
-    ['Faridabad', 'faridabad', 'faridabad-img.jpeg'],
-] as [$cityName, $slug, $image])
-                   <a href="{{ route('city.show', $slug) }}"
-   class="max-sm:[&:last-child:nth-child(odd)]:col-span-2 group relative overflow-hidden bg-white border border-gray-200 rounded-2xl p-6 text-center hover:border-coral-400 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-
-   <span class="pointer-events-none absolute inset-0 bg-gradient-to-t from-coral-100/70 via-coral-50/40 to-transparent opacity-0 group-hover:opacity-100 transition duration-500"></span>
-   @if(!empty($cityCounts[$slug]))
-   <span class="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-ink-950 text-white text-[10px] font-bold">{{ $cityCounts[$slug] }} {{ $cityCounts[$slug] === 1 ? 'PG' : 'PGs' }}</span>
-   @endif
-
-   <div class="flex justify-center mb-4">
-    <img loading="lazy" src="{{ asset('assets/images/' . $image) }}"
-         alt="{{ $cityName }}"
-         class="w-24 h-24 object-contain group-hover:scale-110 transition duration-300">
-</div>
-
-    <h4 class="relative font-display font-bold text-xl text-slate-900 transition duration-300 group-hover:-translate-y-1">
-        {{ $cityName }}
-    </h4>
-
-    <p class="relative text-coral-500 font-semibold mt-3 inline-flex items-center gap-1.5 translate-y-1 opacity-70 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300">
-        Explore <i class="fa-solid fa-arrow-right text-xs transition group-hover:translate-x-1"></i>
-    </p>
-
-</a>
-                    @endforeach
+                  {{-- cities with PGs come first, then the rest in their set order --}}
+                  @foreach($cities->sortBy(fn ($c) => [empty($cityCounts[$c->slug]) ? 1 : 0, $c->display_order, $c->id]) as $city)
+                    <a href="{{ route('city.show', $city->slug) }}"
+                       class="group flex flex-col items-center justify-center rounded-2xl bg-white border border-gray-200 px-2 py-4 text-center hover:border-coral-400 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+                        <span class="flex items-center justify-center w-20 h-20 rounded-full bg-[#f6f6f6] group-hover:bg-coral-50 group-hover:scale-105 transition duration-300">
+                            @include('partials.city-icon', ['slug' => $city->slug, 'class' => 'w-14 h-14'])
+                        </span>
+                        <span class="mt-2 font-bold text-sm text-slate-900">{{ $city->name }}</span>
+                        @if(!empty($cityCounts[$city->slug]))
+                            <span class="mt-1 px-2 py-0.5 rounded-full bg-ink-950 text-white text-[10px] font-bold">{{ $cityCounts[$city->slug] }} {{ $cityCounts[$city->slug] === 1 ? 'PG' : 'PGs' }}</span>
+                        @endif
+                    </a>
+                  @endforeach
                 </div>
             </div>
 

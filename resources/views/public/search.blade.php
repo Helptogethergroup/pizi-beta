@@ -1,6 +1,6 @@
 @extends('layouts.app')
-@section('title', 'Search Verified PGs in Delhi NCR | Pizi')
-@section('meta_description', 'Search verified PGs in Delhi NCR by city, budget, room type and amenities. Find boys, girls and unisex PGs in Delhi, Noida, Gurgaon and more with zero brokerage and free site visits on Pizi.')
+@section('title', 'Search Verified PGs in India | Pizi')
+@section('meta_description', 'Search verified PGs by city, budget, room type and amenities. Boys, girls and unisex PGs in Delhi NCR and other Indian cities.')
 @section('content')
 
 {{-- ===== SEARCH HEADER ===== --}}

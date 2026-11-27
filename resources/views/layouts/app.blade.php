@@ -1,14 +1,8 @@
 
 @php
-    $activeCitySlugs = \Illuminate\Support\Facades\Cache::remember('active_city_slugs', 600, function () {
-        return \Illuminate\Support\Facades\DB::table('properties')
-            ->join('cities', 'cities.id', '=', 'properties.city_id')
-            ->where('properties.is_active', 1)
-            ->whereNull('properties.deleted_at')
-            ->distinct()
-            ->pluck('cities.slug')
-            ->toArray();
-    });
+    // every active city, for the Cities menu, the phone menu and the footer
+    $navCities = \Illuminate\Support\Facades\Cache::remember('nav_cities', 600, fn () => \App\Models\City::where('is_active', true)
+        ->orderBy('display_order')->orderBy('id')->get(['name', 'slug'])->map(fn ($c) => ['name' => $c->name, 'slug' => $c->slug])->all());
 @endphp
 
 
@@ -43,13 +37,13 @@ if ('serviceWorker' in navigator) {
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
 
 <title>@yield('title', 'Pizi — Live Better. Stay Smarter.')</title>
-<meta name="description" content="@yield('meta_description', 'Find verified PGs, hostels & co-living spaces across Delhi NCR and Noida. Filter by budget, locality, gender. Free site visits, zero brokerage.')">
+<meta name="description" content="@yield('meta_description', 'Find verified PGs, hostels & co-living spaces across Delhi NCR and other Indian cities. Filter by budget, locality and amenities. Zero brokerage.')">
 <meta name="keywords" content="@yield('meta_keywords', 'pg in delhi, pg in noida, hostel delhi, coliving noida, paying guest delhi ncr, ladies pg, boys pg')">
 <link rel="canonical" href="{{ url()->current() }}">
 
 <meta property="og:type" content="website">
 <meta property="og:title" content="@yield('title', 'Pizi')">
-<meta property="og:description" content="@yield('meta_description', 'Verified PGs across Delhi NCR & Noida.')">
+<meta property="og:description" content="@yield('meta_description', 'Verified PGs across India.')">
 <meta property="og:url" content="{{ url()->current() }}">
 <meta property="og:image" content="@yield('og_image', asset('images/og-default.jpg'))">
 <meta name="twitter:card" content="summary_large_image">
@@ -139,23 +133,11 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
                     <svg class="w-3.5 h-3.5 transition group-hover:rotate-180" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                 </button>
                 {{-- dropdown panel --}}
-                <div class="invisible opacity-0 group-hover:visible group-hover:opacity-100 transition absolute left-0 top-full pt-2 w-52 z-50">
-                    <div class="bg-white rounded-2xl shadow-2xl shadow-ink-900/15 border border-ink-900/10 p-2">
-                        <a href="{{ route('city.show', 'delhi') }}" class="flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-coral-50 hover:text-coral-600 transition"><i class="fa-solid fa-location-dot fa-fw"></i> Delhi</a>
-                        <a href="{{ route('city.show', 'noida') }}" class="flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-coral-50 hover:text-coral-600 transition"><i class="fa-solid fa-location-dot fa-fw"></i> Noida</a>
-                        <!--<a href="{{ route('city.show', 'gurgaon') }}" class="flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-coral-50 hover:text-coral-600 transition"><i class="fa-solid fa-location-dot fa-fw"></i> Gurgaon</a>-->
-                        <!--<a href="{{ route('city.show', 'ghaziabad') }}" class="flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-coral-50 hover:text-coral-600 transition"><i class="fa-solid fa-location-dot fa-fw"></i> Ghaziabad</a>-->
-                        <!--<a href="{{ route('city.show', 'faridabad') }}" class="flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-coral-50 hover:text-coral-600 transition"><i class="fa-solid fa-location-dot fa-fw"></i> Faridabad</a>-->
-                        
-                        @if(in_array('gurgaon', $activeCitySlugs))
-                        <a href="{{ route('city.show', 'gurgaon') }}" class="flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-coral-50 hover:text-coral-600 transition"><i class="fa-solid fa-location-dot fa-fw"></i> Gurgaon</a>
-                        @endif
-                        @if(in_array('ghaziabad', $activeCitySlugs))
-                        <a href="{{ route('city.show', 'ghaziabad') }}" class="flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-coral-50 hover:text-coral-600 transition"><i class="fa-solid fa-location-dot fa-fw"></i> Ghaziabad</a>
-                        @endif
-                        @if(in_array('faridabad', $activeCitySlugs))
-                        <a href="{{ route('city.show', 'faridabad') }}" class="flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-coral-50 hover:text-coral-600 transition"><i class="fa-solid fa-location-dot fa-fw"></i> Faridabad</a>
-                        @endif
+                <div class="invisible opacity-0 group-hover:visible group-hover:opacity-100 transition absolute left-0 top-full pt-2 w-[26rem] z-50">
+                    <div class="bg-white rounded-2xl shadow-2xl shadow-ink-900/15 border border-ink-900/10 p-2 grid grid-cols-3 gap-x-1 max-h-[70vh] overflow-y-auto">
+                        @foreach($navCities as $c)
+                            <a href="{{ route('city.show', $c['slug']) }}" class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-coral-50 hover:text-coral-600 transition"><i class="fa-solid fa-location-dot fa-fw"></i> {{ $c['name'] }}</a>
+                        @endforeach
                     </div>
                 </div>
             </div>
@@ -300,21 +282,14 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 
        <div class="border-t border-ink-900/10 my-2 pt-2">
                 <div class="px-4 py-1 text-xs uppercase font-bold text-ink-900/40">Cities</div>
-                <!--@foreach(['delhi' => 'Delhi', 'noida' => 'Noida', 'gurgaon' => 'Gurgaon', 'ghaziabad' => 'Ghaziabad', 'faridabad' => 'Faridabad'] as $slug => $cityName)-->
-                <!--    <a href="{{ route('city.show', $slug) }}"-->
-                <!--       class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition {{ request()->routeIs('city.show') && request()->segment(2) === $slug ? 'bg-coral-50 text-coral-600' : 'text-ink-900 hover:bg-coral-50 hover:text-coral-600' }}">-->
-                <!--        📍 {{ $cityName }}-->
-                <!--    </a>-->
-                <!--@endforeach-->
-                
-                
-                @foreach(['delhi' => 'Delhi', 'noida' => 'Noida', 'gurgaon' => 'Gurgaon', 'ghaziabad' => 'Ghaziabad', 'faridabad' => 'Faridabad'] as $slug => $cityName)
-                    @continue(!in_array($slug, $activeCitySlugs))
-                    <a href="{{ route('city.show', $slug) }}"
-                       class="flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition {{ request()->routeIs('city.show') && request()->segment(2) === $slug ? 'bg-coral-50 text-coral-600' : 'text-ink-900 hover:bg-coral-50 hover:text-coral-600' }}">
-                        <i class="fa-solid fa-location-dot fa-fw"></i> {{ $cityName }}
-                    </a>
-                @endforeach
+                <div class="grid grid-cols-2">
+                    @foreach($navCities as $c)
+                        <a href="{{ route('city.show', $c['slug']) }}"
+                           class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition {{ request()->routeIs('city.show') && request()->route('city') === $c['slug'] ? 'bg-coral-50 text-coral-600' : 'text-ink-900 hover:bg-coral-50 hover:text-coral-600' }}">
+                            <i class="fa-solid fa-location-dot fa-fw"></i> {{ $c['name'] }}
+                        </a>
+                    @endforeach
+                </div>
             </div>
 
             <div class="border-t border-ink-900/10 my-2 pt-2">
@@ -495,7 +470,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
                 <!--<div class="w-11 h-11 rounded-xl bg-coral-500 flex items-center justify-center font-display font-black text-cream text-xl shadow-lg shadow-coral-500/30">P</div>-->
                 <!--<span class="font-display font-black text-2xl text-cream">Pizi</span>-->
             </div>
-            <p class="text-sm leading-relaxed text-cream/60">Verified PGs, hostels & co-living across Delhi NCR. Zero brokerage. Free site visits.</p>
+            <p class="text-sm leading-relaxed text-cream/60">Verified PGs, hostels & co-living across India. Zero brokerage. Free site visits.</p>
 
        {{-- social icons --}}
             <div class="flex items-center gap-2 mt-5">
@@ -509,25 +484,10 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 
         <div>
             <h4 class="font-display font-bold text-cream mb-4">Cities</h4>
-            <ul class="space-y-2.5 text-sm">
-                <li><a href="{{ url('/pg-in-delhi') }}" class="text-cream/60 hover:text-coral-400 hover:translate-x-1 inline-block transition">PGs in Delhi</a></li>
-                <li><a href="{{ url('/pg-in-noida') }}" class="text-cream/60 hover:text-coral-400 hover:translate-x-1 inline-block transition">PGs in Noida</a></li>
-                <!--<li><a href="{{ url('/pg-in-gurgaon') }}" class="text-cream/60 hover:text-coral-400 hover:translate-x-1 inline-block transition">PGs in Gurgaon</a></li>-->
-                <!--<li><a href="{{ url('/pg-in-ghaziabad') }}" class="text-cream/60 hover:text-coral-400 hover:translate-x-1 inline-block transition">PGs in Ghaziabad</a></li>-->
-                <!--<li><a href="{{ url('/pg-in-faridabad') }}" class="text-cream/60 hover:text-coral-400 hover:translate-x-1 inline-block transition">PGs in Faridabad</a></li>-->
-                
-                
-                @if(in_array('gurgaon', $activeCitySlugs))
-                <li><a href="{{ url('/pg-in-gurgaon') }}" class="text-cream/60 hover:text-coral-400 hover:translate-x-1 inline-block transition">PGs in Gurgaon</a></li>
-                @endif
-                @if(in_array('ghaziabad', $activeCitySlugs))
-                <li><a href="{{ url('/pg-in-ghaziabad') }}" class="text-cream/60 hover:text-coral-400 hover:translate-x-1 inline-block transition">PGs in Ghaziabad</a></li>
-                @endif
-                @if(in_array('faridabad', $activeCitySlugs))
-                <li><a href="{{ url('/pg-in-faridabad') }}" class="text-cream/60 hover:text-coral-400 hover:translate-x-1 inline-block transition">PGs in Faridabad</a></li>
-                @endif
-                
-                
+            <ul class="grid grid-cols-2 gap-x-3 gap-y-2.5 text-sm">
+                @foreach($navCities as $c)
+                    <li><a href="{{ route('city.show', $c['slug']) }}" class="text-cream/60 hover:text-coral-400 hover:translate-x-1 inline-block transition">PGs in {{ $c['name'] }}</a></li>
+                @endforeach
             </ul>
         </div>
 
