@@ -470,9 +470,9 @@
             </div>
 
             {{-- ===== BOX 3: BY CITY ===== --}}
-            <div class="bg-white/[0.06] backdrop-blur border border-white/10 rounded-3xl p-6 lg:p-8 shadow-xl shadow-black/20">
-                <h3 class="font-display font-bold text-xl text-slate-900 mb-5 flex items-center gap-2"><svg class="inline-block w-[1em] h-[1em] align-[-0.15em]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg> By City</h3>
-                <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3 lg:gap-4">
+            <div class="bg-white/[0.06] backdrop-blur border border-white/10 rounded-3xl p-5 shadow-xl shadow-black/20">
+                <h3 class="font-display font-bold text-xl text-slate-900 mb-4 flex items-center gap-2"><svg class="inline-block w-[1em] h-[1em] align-[-0.15em]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg> By City</h3>
+                <div class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-x-2 gap-y-3">
                   @php
     $cityCounts = \Illuminate\Support\Facades\Cache::remember('home_city_pg_counts', 120, fn () => \DB::table('properties')
         ->join('cities', 'cities.id', '=', 'properties.city_id')
@@ -481,14 +481,14 @@
 @endphp
                   {{-- cities with PGs come first, then the rest in their set order --}}
                   @foreach($cities->sortBy(fn ($c) => [empty($cityCounts[$c->slug]) ? 1 : 0, $c->display_order, $c->id]) as $city)
-                    <a href="{{ route('city.show', $city->slug) }}"
-                       class="group flex flex-col items-center justify-center rounded-2xl bg-white border border-gray-200 px-2 py-4 text-center hover:border-coral-400 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-                        <span class="flex items-center justify-center w-20 h-20 rounded-full bg-[#f6f6f6] group-hover:bg-coral-50 group-hover:scale-105 transition duration-300">
-                            @include('partials.city-icon', ['slug' => $city->slug, 'class' => 'w-14 h-14'])
+                    <a href="{{ route('city.show', $city->slug) }}" class="group relative flex justify-center"
+                       title="{{ $city->name }}@if(!empty($cityCounts[$city->slug])): {{ $cityCounts[$city->slug] }} {{ $cityCounts[$city->slug] === 1 ? 'PG' : 'PGs' }}@endif">
+                        <span class="flex flex-col items-center justify-center w-20 h-20 rounded-full bg-[#f6f6f6] text-center group-hover:bg-coral-50 group-hover:-translate-y-1 group-hover:shadow-lg transition duration-300">
+                            @include('partials.city-icon', ['slug' => $city->slug, 'class' => 'w-10 h-10'])
+                            <span class="mt-0.5 text-[11px] font-bold leading-tight text-slate-900">{{ $city->name }}</span>
                         </span>
-                        <span class="mt-2 font-bold text-sm text-slate-900">{{ $city->name }}</span>
                         @if(!empty($cityCounts[$city->slug]))
-                            <span class="mt-1 px-2 py-0.5 rounded-full bg-ink-950 text-white text-[10px] font-bold">{{ $cityCounts[$city->slug] }} {{ $cityCounts[$city->slug] === 1 ? 'PG' : 'PGs' }}</span>
+                            <span class="absolute -top-1 right-0 min-w-[1.25rem] px-1 py-0.5 rounded-full bg-ink-950 text-white text-[10px] font-bold leading-none text-center">{{ $cityCounts[$city->slug] }}</span>
                         @endif
                     </a>
                   @endforeach
