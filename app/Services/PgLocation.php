@@ -7,10 +7,13 @@ use Illuminate\Support\Collection;
 
 /**
  * Where a PG is, for "near me". Many listings have no map pin, so the place is worked out in this order:
- *   exact  the PG's own pin
- *   area   its sector / locality: the pins of other PGs there, or the centre of a well-known area
+ *   exact  the PG's own pin, if it agrees with the written locality / address
+ *   area   its sector / locality: the centre of a well-known area, or the pins of other PGs there
  *   city   the centre of its city (only a rough idea)
  * The area and city centres are approximate (to about a kilometre or two) and are always shown as such.
+ *
+ * A pin is often saved from wherever the person adding the PG was sitting. So a pin that is far from every place
+ * named in the locality and address (or, when none is recognised, far outside the city) is not used.
  */
 class PgLocation
 {
@@ -23,6 +26,11 @@ class PgLocation
         'chandigarh' => [30.7333, 76.7794], 'kochi' => [9.9312, 76.2673], 'coimbatore' => [11.0168, 76.9558],
         'goa' => [15.4909, 73.8278], 'bhubaneswar' => [20.2961, 85.8245],
     ];
+
+    /** How far (km) a pin may be from the place named before it is taken to be wrong. */
+    private const SECTOR_KM = 5;
+    private const AREA_KM = 6;
+    private const CITY_KM = 40;
 
     private const SECTORS = [
         'noida' => [
@@ -38,6 +46,7 @@ class PgLocation
         'faridabad' => [15 => [28.395, 77.320], 21 => [28.418, 77.305]],
     ];
 
+    /** name => [lat, lng, km a pin may be away (only for wide areas)] */
     private const AREAS = [
         'delhi' => [
             'govindpuri' => [28.536, 77.264], 'kalkaji' => [28.549, 77.251], 'nehru place' => [28.549, 77.253],
@@ -46,17 +55,20 @@ class PgLocation
             'karol bagh' => [28.652, 77.191], 'pusa road' => [28.645, 77.185], 'patel nagar' => [28.651, 77.169],
             'tilak nagar' => [28.637, 77.097], 'rajouri garden' => [28.649, 77.121], 'shivaji vihar' => [28.644, 77.118],
             'janakpuri' => [28.622, 77.088], 'uttam nagar' => [28.620, 77.056], 'krishna park' => [28.630, 77.075],
-            'dwarka' => [28.592, 77.046], 'kotla mubarakpur' => [28.574, 77.226], 'lajpat nagar' => [28.568, 77.243],
+            'dwarka' => [28.592, 77.046, 8], 'kotla mubarakpur' => [28.574, 77.226], 'lajpat nagar' => [28.568, 77.243],
             'amar colony' => [28.564, 77.241], 'okhla' => [28.536, 77.275], 'saket' => [28.525, 77.207],
             'hauz khas' => [28.549, 77.200], 'satya niketan' => [28.588, 77.167], 'south campus' => [28.588, 77.168],
-            'mayur vihar' => [28.608, 77.295], 'rohini' => [28.738, 77.112],
+            'mayur vihar' => [28.608, 77.295], 'rohini' => [28.738, 77.112, 10],
         ],
-        'noida' => ['knowledge park' => [28.469, 77.496], 'greater noida' => [28.474, 77.504]],
-        'gurgaon' => ['cyber city' => [28.495, 77.089], 'dlf' => [28.475, 77.094], 'sohna road' => [28.410, 77.042]],
+        'noida' => [
+            'knowledge park' => [28.469, 77.496], 'dadri' => [28.553, 77.554, 8], 'greater noida west' => [28.610, 77.430, 8],
+            'noida extension' => [28.610, 77.430, 8], 'gaur city' => [28.610, 77.430, 8], 'greater noida' => [28.474, 77.504, 17],
+        ],
+        'gurgaon' => ['cyber city' => [28.495, 77.089], 'dlf' => [28.475, 77.094], 'sohna road' => [28.410, 77.042, 10]],
         'ghaziabad' => [
             'indirapuram' => [28.641, 77.371], 'vaishali' => [28.645, 77.339], 'vasundhara' => [28.660, 77.373], 'raj nagar' => [28.680, 77.443],
         ],
-        'faridabad' => ['greenfield' => [28.456, 77.288], 'nit' => [28.389, 77.305]],
+        'faridabad' => ['greenfield' => [28.456, 77.288], 'nit' => [28.389, 77.305, 8]],
     ];
 
     /**
@@ -84,38 +96,80 @@ class PgLocation
     /** @return array{0: ?array{0: float, 1: float}, 1: ?string} */
     public function locate(Property $p, ?array $areaPins = null): array
     {
-        if ($this->inIndia($p->latitude, $p->longitude)) {
+        $hints = $this->hints($p);
+        if ($this->inIndia($p->latitude, $p->longitude) && $this->pinAgrees($p, $hints)) {
             return [[(float) $p->latitude, (float) $p->longitude], 'exact'];
         }
-        $city = (string) $p->city?->slug;
-        $locality = mb_strtolower((string) $p->locality?->name);
-        $address = mb_strtolower((string) $p->address_line . ' ' . $p->landmark);
+        if ($hints) {
+            // the most precise place named (a sector or small area before a wide one)
+            usort($hints, fn ($a, $b) => $a[1] <=> $b[1]);
 
-        foreach ([$locality, $address] as $text) {
-            if (preg_match('/\bsec(?:tor)?[\s\-.]*0*(\d{1,3})(?!\d)/', $text, $m) && isset(self::SECTORS[$city][(int) $m[1]])) {
-                return [self::SECTORS[$city][(int) $m[1]], 'area'];
-            }
-            $text = preg_replace('/\s+/', ' ', $text);
-            foreach (self::AREAS[$city] ?? [] as $name => $point) {
-                if (preg_match('/\b' . preg_quote($name, '/') . '\b/', $text)) {
-                    return [$point, 'area'];
-                }
-            }
+            return [$hints[0][0], 'area'];
         }
         $areaPins ??= $this->pinsByLocality();
         if ($p->locality_id && isset($areaPins[$p->locality_id])) {
             return [$areaPins[$p->locality_id], 'area'];
         }
+        $city = (string) $p->city?->slug;
 
         return isset(self::CITIES[$city]) ? [self::CITIES[$city], 'city'] : [null, null];
     }
 
-    /** The middle of the pinned PGs of each locality. */
+    /** The PG has a map pin, but it is nowhere near its written address. */
+    public function pinLooksWrong(Property $p): bool
+    {
+        return $this->inIndia($p->latitude, $p->longitude) && !$this->pinAgrees($p, $this->hints($p));
+    }
+
+    /** The places named in the locality and address, each as [[lat, lng], km a pin may be away]. */
+    private function hints(Property $p): array
+    {
+        $city = (string) $p->city?->slug;
+        $hints = [];
+        foreach ([$p->locality?->name, $p->address_line . ' ' . $p->landmark] as $text) {
+            $text = preg_replace('/\s+/', ' ', mb_strtolower((string) $text));
+            // Greater Noida has its own sector numbers, far from the Noida ones
+            $otherSectors = $city === 'noida' && preg_match('/greater noida|noida extension/', $text);
+            if (!$otherSectors && preg_match('/\bsec(?:tor)?[\s\-.]*0*(\d{1,3})(?!\d)/', $text, $m) && isset(self::SECTORS[$city][(int) $m[1]])) {
+                $hints[] = [self::SECTORS[$city][(int) $m[1]], self::SECTOR_KM];
+            }
+            foreach (self::AREAS[$city] ?? [] as $name => $area) {
+                if (preg_match('/\b' . preg_quote($name, '/') . '\b/', $text)) {
+                    $hints[] = [[$area[0], $area[1]], $area[2] ?? self::AREA_KM];
+                }
+            }
+        }
+
+        return $hints;
+    }
+
+    /** Close to any of the named places; with none recognised, at least inside the city. */
+    private function pinAgrees(Property $p, array $hints): bool
+    {
+        $lat = (float) $p->latitude;
+        $lng = (float) $p->longitude;
+        if (!$hints) {
+            $centre = self::CITIES[(string) $p->city?->slug] ?? null;
+
+            return !$centre || $this->km($lat, $lng, $centre[0], $centre[1]) <= self::CITY_KM;
+        }
+        foreach ($hints as [$point, $allowed]) {
+            if ($this->km($lat, $lng, $point[0], $point[1]) <= $allowed) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** The middle of the (believable) pins of each locality. */
     private function pinsByLocality(): array
     {
-        return Property::active()->whereNotNull('locality_id')->whereBetween('latitude', [6, 38])->whereBetween('longitude', [68, 98])
-            ->selectRaw('locality_id, AVG(latitude) as la, AVG(longitude) as lo')->groupBy('locality_id')->get()
-            ->mapWithKeys(fn ($r) => [$r->locality_id => [(float) $r->la, (float) $r->lo]])->all();
+        return Property::active()->with(['city', 'locality'])->whereNotNull('locality_id')
+            ->whereBetween('latitude', [6, 38])->whereBetween('longitude', [68, 98])->get()
+            ->reject(fn ($p) => $this->pinLooksWrong($p))
+            ->groupBy('locality_id')
+            ->map(fn ($rows) => [(float) $rows->avg('latitude'), (float) $rows->avg('longitude')])->all();
     }
 
     private function inIndia($lat, $lng): bool

@@ -468,7 +468,15 @@
                     <p class="text-ink-700 text-sm lg:text-base mt-2">{{ $property->address_line }}, {{ $property->locality?->name }}, {{ $property->city?->name }} - {{ $property->pincode }}</p>
                 </div>
                 @if(!empty($property->google_map_link) || ($property->latitude && $property->longitude))
-                <a href="{{ ($property->latitude && $property->longitude) ? 'https://www.google.com/maps?q='.$property->latitude.','.$property->longitude : $property->google_map_link }}" target="_blank" class="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-sm transition shadow-lg shadow-blue-500/20">
+                @php
+                    // a pin far from the written address is wrong: send people to the address instead
+                    $pinWrong = app(\App\Services\PgLocation::class)->pinLooksWrong($property);
+                    $mapPin = !$pinWrong && $property->latitude && $property->longitude;
+                    $directions = $mapPin ? 'https://www.google.com/maps?q=' . $property->latitude . ',' . $property->longitude
+                        : ($pinWrong ? 'https://www.google.com/maps/search/?api=1&query=' . urlencode(implode(', ', array_filter([$property->address_line, $property->locality?->name, $property->city?->name, $property->pincode])))
+                        : $property->google_map_link);
+                @endphp
+                <a href="{{ $directions }}" target="_blank"class="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-bold text-sm transition shadow-lg shadow-blue-500/20">
                         <svg class="inline-block w-[1em] h-[1em] align-[-0.15em]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-2 6-4 1 2-6z"/></svg> Get Directions
                     </a>
                 @endif
@@ -502,8 +510,9 @@
                 }
 
                 ready(function () {
-                    var lat = {{ $property->latitude ? $property->latitude : 'null' }};
-                    var lng = {{ $property->longitude ? $property->longitude : 'null' }};
+                    var usePin = @json(!app(\App\Services\PgLocation::class)->pinLooksWrong($property));
+                    var lat = usePin ? {{ $property->latitude ? $property->latitude : 'null' }} : null;
+                    var lng = usePin ? {{ $property->longitude ? $property->longitude : 'null' }} : null;
 
                     if (lat && lng) {
                         renderMap(lat, lng, @json($property->name));
