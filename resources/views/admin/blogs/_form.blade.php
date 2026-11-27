@@ -10,7 +10,7 @@
 
 <form id="blogForm" method="POST" action="{{ $action }}" enctype="multipart/form-data" class="space-y-6">
     @csrf
-    @if($isEdit) @method('PUT') @endif
+    @if($isEdit) @method('PATCH') @endif {{-- the update route takes PATCH --}}
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 

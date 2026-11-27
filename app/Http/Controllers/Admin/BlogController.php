@@ -78,6 +78,8 @@ class BlogController extends Controller
     public function update(Request $request, Blog $blog)
     {
         $data = $this->validateBlog($request);
+        // an unticked box sends nothing: it means "draft", as the form says
+        $data['is_published'] = $request->boolean('is_published');
 
         if ($request->hasFile('cover_image')) {
             if ($blog->cover_image && !str_starts_with($blog->cover_image, 'http')) {
