@@ -359,7 +359,7 @@
                 <span class="inline-flex items-center gap-2 text-xs font-bold tracking-widest uppercase text-coral-600">
                     <i class="fa-solid fa-location-crosshairs"></i> Near you
                 </span>
-                <h2 class="font-display font-black text-xl lg:text-2xl text-ink-950 mt-1">Verified PGs close to your location</h2>
+                <h2 class="font-display font-black text-xl lg:text-2xl text-ink-950 mt-1">PGs close to your location</h2>
                 <p id="pzNearStatus" class="text-sm text-ink-900/60 mt-1" role="status" aria-live="polite"></p>
             </div>
             <a id="pzNearAll" href="{{ route('search') }}" class="hidden inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-ink-900/15 text-sm font-semibold hover:border-coral-500 hover:text-coral-600 transition">
@@ -1470,7 +1470,8 @@ function piziUpdateBudget(val) {
         }
         var badge = el('span', 'absolute top-2 left-2 px-2.5 py-0.5 rounded-full bg-ink-950/85 text-white text-[11px] font-semibold inline-flex items-center gap-1.5');
         badge.innerHTML = '<i class="fa-solid fa-location-arrow"></i>';
-        badge.appendChild(document.createTextNode(p.distance_km + ' km away'));
+        // "~" marks a distance worked out from the area (the PG has no exact map pin); with only the city known, no figure
+        badge.appendChild(document.createTextNode(p.place === 'city' ? 'In ' + (p.city || 'this city') : (p.approx ? '~' + Math.max(1, p.distance_km) : p.distance_km) + ' km away'));
         media.appendChild(badge);
         a.appendChild(media);
 
@@ -1519,18 +1520,25 @@ function piziUpdateBudget(val) {
             navigator.geolocation.getCurrentPosition(function (pos) {
                 nearBtn.disabled = false;
                 var lat = pos.coords.latitude, lng = pos.coords.longitude;
-                setStatus('Finding the closest verified PGs...');
+                // laptops often know the place only roughly (from the internet connection): say so
+                var rough = pos.coords.accuracy && pos.coords.accuracy > 3000
+                    ? ' Your device gave only a rough location (about ' + Math.round(pos.coords.accuracy / 1000) + ' km); on a phone with GPS on it is much better.'
+                    : '';
+                setStatus('Finding the closest PGs...');
                 fetch(searchUrl + '?json=nearby&lat=' + lat + '&lng=' + lng, { headers: { 'Accept': 'application/json' } })
                     .then(function (r) { return r.json(); })
                     .then(function (res) {
                         var list = res.data || [];
                         if (!list.length) {
-                            showMessage('fa-map-location-dot', 'We could not find verified PGs with a map location near you yet. Try searching by locality or college.');
+                            showMessage('fa-map-location-dot', res.nearest_km
+                                ? 'There are no PGs within 100 km of you yet (the closest is about ' + Math.round(res.nearest_km) + ' km away). Search by city instead.' + rough
+                                : 'We could not find PGs near you yet. Try searching by locality or college.');
                             return;
                         }
                         nearGrid.innerHTML = '';
                         list.forEach(function (p, i) { var c = renderCard(p); c.style.transitionDelay = (i * 70) + 'ms'; nearGrid.appendChild(c); requestAnimationFrame(function () { c.classList.add('pz-in'); }); });
-                        setStatus('Showing the ' + list.length + ' closest verified PGs, nearest first.');
+                        setStatus('Showing the ' + list.length + ' closest PGs, nearest first.'
+                            + (list.some(function (p) { return p.approx; }) ? ' Distances with ~ are estimated from the area.' : '') + rough);
                         nearAll.href = searchUrl + '?sort=nearest&lat=' + lat + '&lng=' + lng;
                         nearAll.classList.remove('hidden');
                     })
@@ -1540,7 +1548,7 @@ function piziUpdateBudget(val) {
                 showMessage('fa-location-crosshairs', err && err.code === 1
                     ? 'Location access is blocked. Allow location for this site in your browser settings, or search by locality instead.'
                     : 'We could not detect your location. Please try again or search by locality.');
-            }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
+            }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
         });
     }
 

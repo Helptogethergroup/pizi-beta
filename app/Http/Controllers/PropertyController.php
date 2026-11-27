@@ -96,15 +96,19 @@ class PropertyController extends Controller
         }
         $sort = $request->get('sort', 'latest');
         if ($sort === 'nearest' && $request->filled('lat') && $request->filled('lng')) {
-            $q->whereNotNull('latitude')->whereNotNull('longitude')
-              ->orderByRaw($this->distanceSql(), [(float) $request->lat, (float) $request->lng, (float) $request->lat]);
+            // nearest first; PGs without a map pin are placed by their area (see PgLocation)
+            $ids = app(\App\Services\PgLocation::class)
+                ->nearest((clone $q)->get(), (float) $request->lat, (float) $request->lng)
+                ->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $ids ? $q->whereIn('properties.id', $ids)->orderByRaw('FIELD(properties.id, ' . implode(',', $ids) . ')') : $q->latest();
+        } else {
+            match ($sort) {
+                'price_low' => $q->orderBy('rent_min', 'asc'),
+                'price_high' => $q->orderBy('rent_min', 'desc'),
+                'popular' => $q->orderBy('view_count', 'desc'),
+                default => $q->latest(),
+            };
         }
-        match ($sort) {
-            'price_low' => $q->orderBy('rent_min', 'asc'),
-            'price_high' => $q->orderBy('rent_min', 'desc'),
-            'popular' => $q->orderBy('view_count', 'desc'),
-            default => $q->latest(),
-        };
 
         $properties = $q->paginate(12)->withQueryString();
 
@@ -294,7 +298,8 @@ class PropertyController extends Controller
     
 
     /**
-     * Nearest verified PGs to a coordinate — JSON for the homepage "PGs near you" block.
+     * Nearest PGs to a coordinate — JSON for the homepage "PGs near you" block. PGs without a map pin are placed by
+     * their sector / locality and marked as approximate. Nothing within MAX_NEAR_KM means we have no PGs there yet.
      */
     private function nearbyJson(Request $request)
     {
@@ -304,45 +309,26 @@ class PropertyController extends Controller
             return response()->json(['data' => []], 422);
         }
 
-        $rows = Property::active()
-            ->where('is_verified', true)
-            ->whereNotNull('latitude')->whereNotNull('longitude')
-            ->where('latitude', '!=', 0)
-            ->with(['city', 'locality'])
-            ->selectRaw('properties.*, ' . $this->distanceSql() . ' as distance_km', [$lat, $lng, $lat])
-            ->orderBy('distance_km')
-            ->limit(6)
-            ->get();
+        $nearest = app(\App\Services\PgLocation::class)
+            ->nearest(Property::active()->with(['city', 'locality'])->get(), $lat, $lng);
+        $rows = $nearest->filter(fn ($p) => $p->distance_km <= 100)->take(6);
 
-        // A pin is "approximate" when several PGs share the exact same point or when
-        // it only has 2 decimals (~1 km precision) — usually a rough city/area pin.
-        $shared = Property::active()->where('is_verified', true)
-            ->whereNotNull('latitude')->whereNotNull('longitude')
-            ->selectRaw('ROUND(latitude, 4) as la, ROUND(longitude, 4) as lo, COUNT(*) as c')
-            ->groupBy('la', 'lo')->having('c', '>', 1)->get()
-            ->mapWithKeys(fn ($r) => [$r->la . ',' . $r->lo => true]);
-
-        return response()->json(['data' => $rows->map(fn ($p) => [
-            'approx' => isset($shared[round((float) $p->latitude, 4) . ',' . round((float) $p->longitude, 4)])
-                || round((float) $p->latitude, 2) == (float) $p->latitude,
-            'lat' => (float) $p->latitude,
-            'lng' => (float) $p->longitude,
-            'name' => $p->name,
-            'url' => route('property.show', $p->slug),
-            'image' => $p->cover_image
-                ? (str_starts_with($p->cover_image, 'http') ? $p->cover_image : asset('storage/' . $p->cover_image))
-                : null,
-            'locality' => $p->locality?->name,
-            'city' => $p->city?->name,
-            'gender' => $p->gender,
-            'rent_min' => $p->rent_min,
-            'distance_km' => round((float) $p->distance_km, 1),
-        ])->values()]);
-    }
-
-    /** Haversine distance in km; bindings are [lat, lng, lat]. */
-    private function distanceSql(): string
-    {
-        return '(6371 * acos(LEAST(1, cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))))';
+        return response()->json([
+            'nearest_km' => $nearest->min('distance_km'),
+            'data' => $rows->map(fn ($p) => [
+                'approx' => $p->place !== 'exact',
+                'place' => $p->place,
+                'name' => $p->name,
+                'url' => route('property.show', $p->slug),
+                'image' => $p->cover_image
+                    ? (str_starts_with($p->cover_image, 'http') ? $p->cover_image : asset('storage/' . $p->cover_image))
+                    : null,
+                'locality' => $p->locality?->name,
+                'city' => $p->city?->name,
+                'gender' => $p->gender,
+                'rent_min' => $p->rent_min,
+                'distance_km' => $p->distance_km,
+            ])->values(),
+        ]);
     }
 }
