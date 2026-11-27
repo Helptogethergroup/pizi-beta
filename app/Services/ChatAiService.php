@@ -94,6 +94,13 @@ class ChatAiService
             Log::error('PG search error: ' . $e->getMessage());
         }
 
+        // a plain greeting: greet back and ask what they are looking for (no AI needed)
+        if (preg_match('/^\s*(h+i+|he+y+|h+y+|hello+|helo+|hlo+|namaste|namaskar|नमस्ते|नमस्कार|हेलो|हाय|good\s+(morning|afternoon|evening))(\s+(bhai|sir|ji|there|pizi))?[\s!.,🙏👋]*$/iu', $message)) {
+            return $language === 'hi'
+                ? "नमस्ते! 👋 आपको किस city और area में PG चाहिए?\n\nऐसे लिख सकते हैं:\n• Karol Bagh me PG\n• Noida me girls PG 8000 tak"
+                : "Hello! 👋 Which city and area do you want a PG in?\n\nYou can type, for example:\n• PG in Karol Bagh\n• Girls PG in Noida under 8000";
+        }
+
         // First, use Gemini to understand the intent
         $intent = $this->detectIntent($message, $language);
 
@@ -178,8 +185,8 @@ Write city and locality names in English letters. Respond ONLY with JSON (no mar
         }
 
         $systemPrompt = $language === 'hi'
-            ? "आप Pizi.in का एक helpful AI assistant हैं। Pizi एक PG/hostel finder platform है। हमेशा user-friendly, short और informative जवाब दें। बहुत ज़रूरी: कभी भी किसी specific PG/property का नाम मत बताओ (चाहे Pizi का हो या किसी और platform का), कभी भी 99acres, NoBroker, MagicBricks जैसी किसी और वेबसाइट का ज़िक्र मत करो। अगर PG के बारे में सवाल हो, तो सिर्फ इतना कहो कि Pizi.in पर जाकर search करें — actual listings कभी खुद मत बनाओ। HARD RULE: हमेशा हिंदी में ही जवाब दो, चाहे पुरानी conversation में कोई भी भाषा इस्तेमाल हुई हो।"
-            : "You are a helpful AI assistant for Pizi.in. Pizi is a PG/hostel finder platform. Always be friendly, concise and informative. IMPORTANT: Never mention specific property names, addresses, or listings — those must only come from Pizi's own database search. Never mention or recommend any other website or platform (like 99acres, NoBroker, MagicBricks, etc.). If asked about PGs, only say to search on Pizi.in — never invent listing details yourself. HARD RULE: Always reply in English only, regardless of what language was used earlier in this conversation.";
+            ? "आप Pizi.in का एक helpful AI assistant हैं। Pizi एक PG/hostel finder platform है। हमेशा user-friendly, short और informative जवाब दें। बहुत ज़रूरी: कभी भी किसी specific PG/property का नाम मत बताओ (चाहे Pizi का हो या किसी और platform का), कभी भी 99acres, NoBroker, MagicBricks जैसी किसी और वेबसाइट का ज़िक्र मत करो। PG इसी chat में खोजे जा सकते हैं: अगर कोई PG ढूंढ रहा हो, तो उनसे area, budget और boys/girls पूछो (website पर जाने को मत कहो)। listings कभी खुद मत बनाओ, और user के बताए बिना कोई city मत मानो। HARD RULE: हमेशा हिंदी में ही जवाब दो, चाहे पुरानी conversation में कोई भी भाषा इस्तेमाल हुई हो।"
+            : "You are a helpful AI assistant for Pizi.in. Pizi is a PG/hostel finder platform. Always be friendly, concise and informative. IMPORTANT: Never mention specific property names, addresses, or listings — those must only come from Pizi's own database search. Never mention or recommend any other website or platform (like 99acres, NoBroker, MagicBricks, etc.). PGs can be searched right here in this chat: if someone is looking for one, ask them for the area, budget and boys/girls (do not send them to the website). Never invent listing details, and never assume a city they have not told you. HARD RULE: Always reply in English only, regardless of what language was used earlier in this conversation.";
 
         // Build multi-turn contents: system prompt, then recent conversation
         // history, then the new user message — so follow-up questions like
