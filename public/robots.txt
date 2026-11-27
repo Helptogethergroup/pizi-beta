@@ -6,4 +6,4 @@ Disallow: /telecaller
 Disallow: /login
 Disallow: /register
 
-Sitemap: /sitemap.xml
+Sitemap: https://pizi.in/sitemap.xml
