@@ -159,20 +159,15 @@ class BlogController extends Controller
             . '{"excerpt": "1-2 sentence summary, max 160 chars", "meta_title": "SEO title, max 60 chars", "meta_description": "SEO meta description, max 160 chars", "keywords": "5-8 comma-separated keywords relevant to PG/hostel search in India"}';
 
         try {
-            // the key goes in a header, never in the address: addresses end up in error logs
-            $response = \Illuminate\Support\Facades\Http::withHeaders(['x-goog-api-key' => $apiKey])->timeout(30)->retry(2, 500)->post(
-                'https://generativelanguage.googleapis.com/v1beta/models/' . env('GEMINI_MODEL', 'gemini-3.8-flash') . ':generateContent',
-                [
-                    'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
-                    'generationConfig' => [
-                        'temperature' => 0.6,
-                        'maxOutputTokens' => 512,
-                        'thinkingConfig' => ['thinkingBudget' => 0],
-                    ],
-                ]
-            );
-
-            $text = $response->json('candidates.0.content.parts.0.text');
+            // same short time limits and backup model as the chat assistant
+            $text = app(\App\Services\ChatAiService::class)->askGemini([
+                'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
+                'generationConfig' => [
+                    'temperature' => 0.6,
+                    'maxOutputTokens' => 1024,
+                    'thinkingConfig' => ['thinkingBudget' => 0],
+                ],
+            ], 25);
             if (!$text) {
                 return response()->json(['success' => false, 'message' => 'AI did not return a result. Try again.'], 502);
             }

@@ -25,8 +25,8 @@ class ChatAiService
     private function models(): array
     {
         return array_values(array_unique(array_filter([
-            env('GEMINI_MODEL', 'gemini-3.8-flash'),
-            env('GEMINI_FALLBACK_MODEL', 'gemini-flash-latest'),
+            env('GEMINI_MODEL', 'gemini-3.6-flash'),
+            env('GEMINI_FALLBACK_MODEL', 'gemini-3.5-flash-lite'),
         ])));
     }
 
@@ -34,7 +34,7 @@ class ChatAiService
      * Asks Gemini and returns the answer's text, or null when no model could give one. Each try has a short time
      * limit: a slow model must never leave the visitor watching the typing dots.
      */
-    private function askGemini(array $body, int $seconds): ?string
+    public function askGemini(array $body, int $seconds): ?string
     {
         if (!$this->geminiApiKey || $this->aiDown) {
             return null;
@@ -50,6 +50,7 @@ class ChatAiService
                 if ($response->status() === 400 && str_contains(strtolower((string) $response->json('error.message')), 'thinking')) {
                     $plain = $body;
                     unset($plain['generationConfig']['thinkingConfig']);
+                    $plain['generationConfig']['maxOutputTokens'] = 4096; // room for the thinking as well as the answer
                     $response = $send($plain);
                 }
                 $text = $response->successful() ? $response->json('candidates.0.content.parts.0.text') : null;
