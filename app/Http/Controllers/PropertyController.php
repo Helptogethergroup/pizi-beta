@@ -16,76 +16,9 @@ class PropertyController extends Controller
      */
    public function search(Request $request)
     {
-        $q = Property::active()
-            ->with(['city', 'locality', 'amenities', 'images']);
-
-        // Free-text search across name, locality, city, address
-        if ($request->filled('q')) {
-            $term = '%' . $request->q . '%';
-            $q->where(function ($w) use ($term) {
-                $w->where('name', 'like', $term)
-                  ->orWhere('address_line', 'like', $term)
-                  ->orWhere('landmark', 'like', $term)
-                  ->orWhereHas('locality', fn($l) => $l->where('name', 'like', $term))
-                  ->orWhereHas('city', fn($c) => $c->where('name', 'like', $term));
-            });
-        }
-
-        // City filter
-        if ($request->filled('city')) {
-            $q->whereHas('city', fn($c) => $c->where('slug', $request->city));
-        }
-
-        // Locality filter
-        if ($request->filled('locality')) {
-            $q->whereHas('locality', fn($l) => $l->where('slug', $request->locality));
-        }
-
-        // Gender filter
-        if ($request->filled('gender')) {
-            $q->where(function ($w) use ($request) {
-                $w->where('gender', $request->gender)
-                  ->orWhere('gender', 'unisex');
-            });
-        }
-
-        // Property type
-        if ($request->filled('type')) {
-            $q->where('property_type', $request->type);
-        }
-
-        // Budget
-        if ($request->filled('budget_max')) {
-            $q->where('rent_min', '<=', $request->budget_max);
-        }
-        if ($request->filled('budget_min')) {
-            $q->where('rent_max', '>=', $request->budget_min);
-        }
-
-        // Food included
-        if ($request->filled('food')) {
-            $q->where('food_included', (bool) $request->food);
-        }
-
-        // Amenities (multi-select)
-        if ($request->filled('amenities')) {
-            $amenityIds = (array) $request->amenities;
-            $q->whereHas('amenities', function ($a) use ($amenityIds) {
-                $a->whereIn('amenities.id', $amenityIds);
-            }, '=', count($amenityIds));
-        }
-
-        // Room type / sharing — sharing_options is a JSON object like
-        // {"single": 9000, "double": 7000}, so "has this sharing type" just
-        // means that key is present with a real value.
-        if ($request->filled('sharing') && in_array($request->sharing, ['single', 'double', 'triple'])) {
-            $q->whereNotNull('sharing_options->' . $request->sharing);
-        }
-
-        // Sort
-        if ($request->filled('nearby_university_id')) {
-            $q->where('nearby_university_id', (int) $request->nearby_university_id);
-        }
+        $filter = app(\App\Services\PgFilter::class);
+        $filters = $filter->read($request);
+        $q = $filter->apply(Property::active()->with(['city', 'locality', 'amenities', 'images']), $filters);
 
         // Lightweight JSON modes used by the homepage (live result count, PGs near me).
         if ($request->query('json') === 'count') {
@@ -94,7 +27,7 @@ class PropertyController extends Controller
         if ($request->query('json') === 'nearby') {
             return $this->nearbyJson($request);
         }
-        $sort = $request->get('sort', 'latest');
+        $sort = (string) $request->query('sort', 'recommended');
         if ($sort === 'nearest' && $request->filled('lat') && $request->filled('lng')) {
             // nearest first; PGs without a map pin are placed by their area (see PgLocation)
             $ids = app(\App\Services\PgLocation::class)
@@ -102,21 +35,17 @@ class PropertyController extends Controller
                 ->pluck('id')->map(fn ($id) => (int) $id)->all();
             $ids ? $q->whereIn('properties.id', $ids)->orderByRaw('FIELD(properties.id, ' . implode(',', $ids) . ')') : $q->latest();
         } else {
-            match ($sort) {
-                'price_low' => $q->orderBy('rent_min', 'asc'),
-                'price_high' => $q->orderBy('rent_min', 'desc'),
-                'popular' => $q->orderBy('view_count', 'desc'),
-                default => $q->latest(),
-            };
+            $filter->sort($q, $sort, $filters['sharing']);
         }
 
         $properties = $q->paginate(12)->withQueryString();
 
-        // For filter sidebar
-        $cities = \App\Models\City::where('is_active', true)->orderBy('name')->get();
-        $amenities = \App\Models\Amenity::orderBy('name')->get();
+        // For the filter panel, the "in use" chips and the help when nothing matches
+        $options = $filter->options($filters);
+        $chips = $filter->chips($filters, $options, $request->query());
+        $relaxations = $properties->total() === 0 ? $filter->relaxations($chips) : [];
 
-        return view('public.search', compact('properties', 'cities', 'amenities'));
+        return view('public.search', compact('properties', 'filters', 'options', 'chips', 'relaxations', 'sort'));
     }
 
     /**

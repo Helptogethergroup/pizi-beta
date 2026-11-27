@@ -39,7 +39,7 @@
             last = m.index + m[0].length;
             changed = true;
         }
-        if (!changed) return;
+        if (!changed || !t.parentNode) return; // the text may already be off the page
         if (last < v.length) frag.appendChild(document.createTextNode(v.slice(last)));
         t.parentNode.replaceChild(frag, t);
     }
