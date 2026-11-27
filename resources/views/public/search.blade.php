@@ -262,6 +262,8 @@
     }
     document.getElementById('pzFilterOpen').addEventListener('click', () => show(true));
     document.getElementById('pzFilterClose').addEventListener('click', () => show(false));
+    // "More filters" on the home page lands here with the panel open
+    if (location.hash === '#filters' && window.matchMedia('(max-width: 1023.98px)').matches) show(true);
 
     // the form's filled values only, so the address stays short
     function params() {

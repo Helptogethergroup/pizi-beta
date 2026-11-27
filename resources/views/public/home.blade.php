@@ -216,33 +216,45 @@
                 <p class="pz-anim pz-d3 text-lg text-ink-900/70 mt-6 max-w-xl leading-relaxed">
                     Verified listings, real photos, honest rents. Delhi NCR and cities across India — book a free site visit in 60 seconds.
                 </p>
-<form id="pzHeroForm" action="{{ route('search') }}" method="GET" class="mt-8 bg-white shadow-xl shadow-ink-900/5 rounded-2xl p-3 flex flex-wrap gap-2 w-full max-w-5xl">
-    
+<form id="pzHeroForm" action="{{ route('search') }}" method="GET" class="mt-8 bg-white shadow-xl shadow-ink-900/5 rounded-2xl p-3 grid grid-cols-2 sm:grid-cols-4 gap-2 w-full max-w-5xl">
+    @php $heroSelect = 'w-full min-w-0 px-3 py-2.5 text-sm border border-ink-900/10 rounded-xl bg-cream focus:outline-none focus:border-coral-500'; @endphp
+
     {{-- Location Input (MAIN) --}}
-    <input type="text" name="q" placeholder="Locality, college, metro station..." 
-           class="flex-1 min-w-[150px] px-4 py-2.5 text-sm border border-ink-900/10 rounded-xl focus:outline-none focus:border-coral-500 placeholder:text-ink-900/40">
-    
+    <input type="text" name="q" placeholder="Area, college, metro, PG name... e.g. girls PG Karol Bagh"
+           class="col-span-2 sm:col-span-4 min-w-0 px-4 py-2.5 text-sm border border-ink-900/10 rounded-xl focus:outline-none focus:border-coral-500 placeholder:text-ink-900/40">
+
+    {{-- City: only the ones that have PGs --}}
+    @php
+        $cityCounts = \Illuminate\Support\Facades\Cache::remember('home_city_pg_counts', 120, fn () => \DB::table('properties')
+            ->join('cities', 'cities.id', '=', 'properties.city_id')
+            ->where('properties.is_active', 1)->whereNull('properties.deleted_at')
+            ->selectRaw('cities.slug as slug, count(*) as c')->groupBy('cities.slug')->pluck('c', 'slug')->toArray());
+    @endphp
+    <select name="city" aria-label="City" class="{{ $heroSelect }}">
+        <option value="">All cities</option>
+        @foreach(($cities ?? collect())->filter(fn ($c) => !empty($cityCounts[$c->slug]))->sortBy('name') as $c)
+            <option value="{{ $c->slug }}">{{ $c->name }} ({{ $cityCounts[$c->slug] }})</option>
+        @endforeach
+    </select>
+
     {{-- Gender --}}
-    <select name="gender" class="px-4 py-2.5 text-sm border border-ink-900/10 rounded-xl bg-cream">
+    <select name="gender" aria-label="Boys or girls" class="{{ $heroSelect }}">
         <option value="">Any gender</option>
-        <option value="male">Male</option>
-        <option value="female">Female</option>
+        <option value="male">Boys</option>
+        <option value="female">Girls</option>
         <option value="unisex">Unisex</option>
     </select>
-    
-   
-{{-- Budget slider --}}
-    <div class="flex-1 min-w-[160px] px-3 py-2.5 border border-ink-900/10 rounded-xl bg-cream flex items-center gap-2">
-        <span class="text-xs font-semibold text-ink-900/50 shrink-0">Budget</span>
-        <input type="range" id="budgetSlider" min="3000" max="30000" step="1000" value="30000"
-               class="flex-1 min-w-0 accent-coral-500"
-               oninput="piziUpdateBudget(this.value)">
-        <span id="budgetValue" class="text-xs text-coral-600 font-bold shrink-0 w-12 text-right">Any</span>
-        <input type="hidden" name="budget_max" id="budgetMaxHidden" value="">
-    </div>
-    
+
+    {{-- Room sharing --}}
+    <select name="sharing" aria-label="Room sharing" class="{{ $heroSelect }}">
+        <option value="">Any room</option>
+        @foreach(\App\Services\PgFilter::SHARING as $val => $text)
+            <option value="{{ $val }}">{{ $text }} sharing</option>
+        @endforeach
+    </select>
+
     {{-- University (NEW) --}}
-    <select name="nearby_university_id" class="px-4 py-2.5 text-sm border border-ink-900/10 rounded-xl bg-cream">
+    <select name="nearby_university_id" aria-label="University" class="{{ $heroSelect }}">
         <option value="">University</option>
         @php
             // only universities that have a PG on the website (this list also feeds the campus strip below);
@@ -257,16 +269,48 @@
             <option value="{{ $uni->id }}">{{ $uni->abbreviation }}</option>
         @endforeach
     </select>
-    
+
+    {{-- Budget slider --}}
+    <div class="col-span-2 min-w-0 px-3 py-2.5 border border-ink-900/10 rounded-xl bg-cream flex items-center gap-2">
+        <span class="text-xs font-semibold text-ink-900/50 shrink-0">Budget</span>
+        <input type="range" id="budgetSlider" min="3000" max="30000" step="1000" value="30000"
+               class="flex-1 min-w-0 accent-coral-500"
+               oninput="piziUpdateBudget(this.value)">
+        <span id="budgetValue" class="text-xs text-coral-600 font-bold shrink-0 w-12 text-right">Any</span>
+        <input type="hidden" name="budget_max" id="budgetMaxHidden" value="">
+    </div>
+
     {{-- Near me --}}
-    <button type="button" id="pzNearBtn" class="px-4 py-2.5 text-sm font-semibold border border-ink-900/10 rounded-xl bg-cream hover:border-coral-500 hover:text-coral-600 transition whitespace-nowrap inline-flex items-center gap-2">
+    <button type="button" id="pzNearBtn" class="px-2 py-2.5 text-sm font-semibold border border-ink-900/10 rounded-xl bg-cream hover:border-coral-500 hover:text-coral-600 transition whitespace-nowrap inline-flex items-center justify-center gap-2">
         <i class="fa-solid fa-location-crosshairs"></i> Near me
     </button>
 
     {{-- Search Button (label shows the live number of matching PGs) --}}
-    <button type="submit" class="px-6 py-2.5 bg-coral-500 hover:bg-coral-600 text-white font-bold text-sm rounded-xl transition shadow-coral-500/30 whitespace-nowrap inline-flex items-center gap-2">
+    <button type="submit" class="px-2 py-2.5 bg-coral-500 hover:bg-coral-600 text-white font-bold text-sm rounded-xl transition shadow-coral-500/30 whitespace-nowrap inline-flex items-center justify-center gap-2">
         <span id="pzSearchLabel">Search</span> <i class="fa-solid fa-arrow-right text-xs"></i>
     </button>
+
+    {{-- Quick filters; "More filters" opens the search page with everything chosen here --}}
+    <div class="col-span-2 sm:col-span-4 flex flex-wrap items-center gap-1.5 pt-1">
+        @php
+            $quick = [['food', 1, 'fa-utensils', 'Food'], ['verified', 1, 'fa-circle-check', 'Verified']];
+            foreach (\App\Models\Amenity::whereIn('name', ['AC', 'WiFi'])->orderBy('name')->get(['id', 'name']) as $a) {
+                $quick[] = ['amenities[]', $a->id, $a->name === 'AC' ? 'fa-snowflake' : 'fa-wifi', $a->name];
+            }
+            $quick[] = ['photos', 1, 'fa-image', 'With photos'];
+        @endphp
+        @foreach($quick as [$name, $value, $icon, $text])
+            <label class="cursor-pointer">
+                <input type="checkbox" name="{{ $name }}" value="{{ $value }}" class="peer sr-only">
+                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-ink-900/15 text-xs font-semibold hover:border-coral-500 peer-checked:bg-coral-500 peer-checked:text-white peer-checked:border-coral-500">
+                    <i class="fa-solid {{ $icon }}"></i> {{ $text }}
+                </span>
+            </label>
+        @endforeach
+        <button type="button" id="pzMoreFilters" class="ml-auto inline-flex items-center gap-1.5 px-2 py-1.5 text-xs font-bold text-coral-600 hover:text-coral-700">
+            <i class="fa-solid fa-sliders"></i> More filters
+        </button>
+    </div>
 </form>
 
                 <!--<div class="pz-anim pz-d5 mt-4 flex flex-wrap items-center gap-2 max-w-xl">-->
@@ -404,12 +448,6 @@
     ========================================================================
 --}}
 {{-- CHOOSE YOUR CITY: just above "Browse by what matters": all at once on laptops, one swipeable row on phones --}}
-@php
-    $cityCounts = \Illuminate\Support\Facades\Cache::remember('home_city_pg_counts', 120, fn () => \DB::table('properties')
-        ->join('cities', 'cities.id', '=', 'properties.city_id')
-        ->where('properties.is_active', 1)->whereNull('properties.deleted_at')
-        ->selectRaw('cities.slug as slug, count(*) as c')->groupBy('cities.slug')->pluck('c', 'slug')->toArray());
-@endphp
 @if(isset($cities) && $cities->count())
 <section class="bg-white border-b border-ink-900/10" aria-label="Choose your city">
     <div class="max-w-7xl mx-auto px-4 lg:px-8 py-5">
@@ -1425,16 +1463,25 @@ function piziUpdateBudget(val) {
     var label = document.getElementById('pzSearchLabel');
     if (form && label) {
         var timer = null, controller = null;
-        var refreshCount = function () {
+        var chosen = function () {
             var params = new URLSearchParams();
-            new FormData(form).forEach(function (value, key) { if (value) params.set(key, value); });
+            new FormData(form).forEach(function (value, key) { if (value) params.append(key, value); });
+            return params;
+        };
+        var moreBtn = document.getElementById('pzMoreFilters');
+        if (moreBtn) moreBtn.addEventListener('click', function () {
+            var query = chosen().toString();
+            window.location.href = searchUrl + (query ? '?' + query : '') + '#filters';
+        });
+        var refreshCount = function () {
+            var params = chosen();
             params.set('json', 'count');
             if (controller) controller.abort();
             controller = new AbortController();
             fetch(searchUrl + '?' + params.toString(), { headers: { 'Accept': 'application/json' }, signal: controller.signal })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
-                    label.textContent = d.count > 0 ? 'Show ' + d.count + (d.count === 1 ? ' PG' : ' PGs') : 'Search';
+                    label.textContent = d.count > 0 ? 'Show ' + d.count + (d.count === 1 ? ' PG' : ' PGs') : 'No exact match';
                 })
                 .catch(function () {});
         };
