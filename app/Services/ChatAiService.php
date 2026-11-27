@@ -9,11 +9,22 @@ use Illuminate\Support\Facades\Log;
 class ChatAiService
 {
     private $geminiApiKey;
-    private $geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+    private $geminiUrl;
 
     public function __construct()
     {
         $this->geminiApiKey = env('GEMINI_API_KEY');
+        // GEMINI_MODEL in .env changes the model without a code change (Google retires old ones)
+        $this->geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/'
+            . env('GEMINI_MODEL', 'gemini-2.5-flash') . ':generateContent';
+    }
+
+    /** What the visitor reads when the AI cannot answer (bad key, Google down). Searching PGs still works. */
+    private function unavailable(string $language): string
+    {
+        return $language === 'hi'
+            ? 'माफ़ कीजिए, assistant अभी जवाब नहीं दे पा रहा। PG ढूंढने के लिए लिखिए, जैसे "PG in Noida under 10000", या Pizi.in पर search करें। 🙏'
+            : 'Sorry, the assistant cannot answer that right now. To find a PG, type something like "PG in Noida under 10000", or search on Pizi.in. 🙏';
     }
 
     public function processMessage($message, $language = 'en', array $history = [])
@@ -67,8 +78,9 @@ Respond ONLY with JSON (no markdown, no extra text):
 }";
 
         try {
-            $response = Http::timeout(20)->retry(2, 500)->post(
-                $this->geminiUrl . '?key=' . $this->geminiApiKey,
+            // the key goes in a header, never in the address: addresses end up in error logs
+            $response = Http::withHeaders(['x-goog-api-key' => (string) $this->geminiApiKey])->timeout(20)->retry(2, 500)->post(
+                $this->geminiUrl,
                 [
                     'contents' => [[
                         'parts' => [['text' => $prompt]]
@@ -220,7 +232,9 @@ Respond ONLY with JSON (no markdown, no extra text):
     private function getGeminiResponse($message, $language, array $history = [])
     {
         if (!$this->geminiApiKey) {
-            return $language === 'hi' ? 'API key missing' : 'API key missing';
+            Log::error('Gemini Error: GEMINI_API_KEY is not set');
+
+            return $this->unavailable($language);
         }
 
         $systemPrompt = $language === 'hi'
@@ -250,8 +264,8 @@ Respond ONLY with JSON (no markdown, no extra text):
         $contents[] = ['role' => 'user', 'parts' => [['text' => $message . $langReminder]]];
 
         try {
-            $response = Http::timeout(30)->retry(2, 500)->post(
-                $this->geminiUrl . '?key=' . $this->geminiApiKey,
+            $response = Http::withHeaders(['x-goog-api-key' => (string) $this->geminiApiKey])->timeout(30)->retry(2, 500)->post(
+                $this->geminiUrl,
                 [
                     'contents' => $contents,
                     'generationConfig' => [
@@ -272,10 +286,13 @@ Respond ONLY with JSON (no markdown, no extra text):
                 }
             }
 
-            return $language === 'hi' ? 'कोशिश करें फिर से। 🙏' : 'Please try again. 🙏';
+            Log::error('Gemini Error: no answer, HTTP ' . $response->status());
+
+            return $this->unavailable($language);
         } catch (\Exception $e) {
             Log::error('Gemini Error: ' . $e->getMessage());
-            return $language === 'hi' ? 'Error आई। 🙏' : 'Error occurred. 🙏';
+
+            return $this->unavailable($language);
         }
     }
 }

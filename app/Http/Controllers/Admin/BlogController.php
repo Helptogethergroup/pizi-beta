@@ -159,8 +159,9 @@ class BlogController extends Controller
             . '{"excerpt": "1-2 sentence summary, max 160 chars", "meta_title": "SEO title, max 60 chars", "meta_description": "SEO meta description, max 160 chars", "keywords": "5-8 comma-separated keywords relevant to PG/hostel search in India"}';
 
         try {
-            $response = \Illuminate\Support\Facades\Http::timeout(30)->retry(2, 500)->post(
-                'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . $apiKey,
+            // the key goes in a header, never in the address: addresses end up in error logs
+            $response = \Illuminate\Support\Facades\Http::withHeaders(['x-goog-api-key' => $apiKey])->timeout(30)->retry(2, 500)->post(
+                'https://generativelanguage.googleapis.com/v1beta/models/' . env('GEMINI_MODEL', 'gemini-2.5-flash') . ':generateContent',
                 [
                     'contents' => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
                     'generationConfig' => [
