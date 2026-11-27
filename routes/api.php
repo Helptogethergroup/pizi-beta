@@ -421,21 +421,30 @@ Route::prefix('chat')->group(function () {
 
     // Track the conversation so admin analytics has real data and follow-up
     // questions can be answered with context.
+    // Keeping a record must never cost the visitor their answer: a database problem here is only logged.
     $session = null;
     if ($sessionId = $request->input('session_id')) {
-        $session = \App\Models\ChatSession::firstOrCreate(
-            ['session_id' => $sessionId],
-            ['language' => $language]
-        );
-        $session->update(['language' => $language, 'last_activity_at' => now()]);
+        try {
+            $session = \App\Models\ChatSession::firstOrCreate(
+                ['session_id' => $sessionId],
+                ['language' => $language]
+            );
+            $session->update(['language' => $language, 'last_activity_at' => now()]);
+        } catch (\Throwable $e) {
+            \Log::warning('Chat session not saved: ' . $e->getMessage());
+        }
     }
 
     $service = new \App\Services\ChatAiService();
     $response = $service->processMessage($message, $language, $request->input('history', []), $request->input('session_id'));
 
     if ($session) {
-        \App\Models\ChatMessage::create(['conversation_id' => $session->id, 'sender' => 'user', 'message' => $message]);
-        \App\Models\ChatMessage::create(['conversation_id' => $session->id, 'sender' => 'bot', 'message' => $response]);
+        try {
+            \App\Models\ChatMessage::create(['conversation_id' => $session->id, 'sender' => 'user', 'message' => $message]);
+            \App\Models\ChatMessage::create(['conversation_id' => $session->id, 'sender' => 'bot', 'message' => $response]);
+        } catch (\Throwable $e) {
+            \Log::warning('Chat messages not saved: ' . $e->getMessage());
+        }
     }
 
     return response()->json([

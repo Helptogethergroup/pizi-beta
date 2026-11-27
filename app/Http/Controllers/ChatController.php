@@ -54,11 +54,16 @@ class ChatController extends Controller
         $history = $session->messages()->latest()->take(8)->get()->reverse()->values()
             ->map(fn ($m) => ['sender' => $m->sender, 'message' => $m->message])->all();
 
-        $response = $this->chatAiService->processMessage($request->message, $session->language ?? 'en', $history);
+        $response = $this->chatAiService->processMessage($request->message, $session->language ?? 'en', $history, $session->session_id);
 
-        \App\Models\ChatMessage::create(['conversation_id' => $session->id, 'sender' => 'user', 'message' => $request->message]);
-        \App\Models\ChatMessage::create(['conversation_id' => $session->id, 'sender' => 'bot', 'message' => $response]);
-        $session->update(['last_activity_at' => now()]);
+        // keeping a record must never cost the visitor their answer
+        try {
+            \App\Models\ChatMessage::create(['conversation_id' => $session->id, 'sender' => 'user', 'message' => $request->message]);
+            \App\Models\ChatMessage::create(['conversation_id' => $session->id, 'sender' => 'bot', 'message' => $response]);
+            $session->update(['last_activity_at' => now()]);
+        } catch (\Throwable $e) {
+            \Log::warning('Chat messages not saved: ' . $e->getMessage());
+        }
 
         return response()->json(['success' => true, 'message' => $response, 'timestamp' => now()->toIso8601String()]);
     }
