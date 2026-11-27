@@ -431,7 +431,7 @@ Route::prefix('chat')->group(function () {
     }
 
     $service = new \App\Services\ChatAiService();
-    $response = $service->processMessage($message, $language, $request->input('history', []));
+    $response = $service->processMessage($message, $language, $request->input('history', []), $request->input('session_id'));
 
     if ($session) {
         \App\Models\ChatMessage::create(['conversation_id' => $session->id, 'sender' => 'user', 'message' => $message]);

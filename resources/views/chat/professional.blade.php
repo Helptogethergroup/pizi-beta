@@ -415,6 +415,24 @@
         if (typing) typing.remove();
     }
 
+    // The reply as text, with links to Pizi's own pages made clickable. Everything else stays plain text.
+    function pziShowReply(box, text) {
+        box.textContent = '';
+        String(text).split(/(https?:\/\/[^\s]+)/).forEach(function (part) {
+            let url = null;
+            try { url = /^https?:\/\//.test(part) ? new URL(part) : null; } catch (e) { url = null; }
+            if (url && (url.host === window.location.host || /(^|\.)pizi\.in$/.test(url.hostname))) {
+                const a = document.createElement('a');
+                a.href = url.href;
+                a.textContent = url.pathname.startsWith('/pg/') ? (currentLang === 'hi' ? 'PG देखें →' : 'View this PG →') : (currentLang === 'hi' ? 'सारे PG देखें →' : 'View all PGs →');
+                a.style.cssText = 'color:#ed4e3d;font-weight:700;text-decoration:underline';
+                box.appendChild(a);
+            } else {
+                box.appendChild(document.createTextNode(part));
+            }
+        });
+    }
+
     window.sendMsg = async function () {
         const input = document.getElementById('msg-input');
         const sendBtn = document.getElementById('send-btn');
@@ -455,7 +473,7 @@
             if (data.success) {
                 const botMsg = document.createElement('div');
                 botMsg.className = 'msg msg-bot';
-                botMsg.textContent = data.message;
+                pziShowReply(botMsg, data.message);
                 chatBody.appendChild(botMsg);
 
                 pziHistory.push({ sender: 'user', message: msg });

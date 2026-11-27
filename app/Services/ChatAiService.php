@@ -72,27 +72,6 @@ class ChatAiService
         return null;
     }
 
-    /** When the AI cannot read the message: the city, the gender and the type, read from the words themselves. */
-    private function readSearchWords(string $message): array
-    {
-        $lower = ' ' . mb_strtolower($message) . ' ';
-        $found = ['city' => null, 'gender' => null];
-        $cities = DB::table('cities')->pluck('name')->sortByDesc(fn ($n) => mb_strlen($n)); // "Greater Noida" before "Noida"
-        foreach ($cities as $name) {
-            if (str_contains($lower, mb_strtolower($name))) {
-                $found['city'] = $name;
-                break;
-            }
-        }
-        if (preg_match('/\b(girls?|female|ladies|women)\b|लड़कियों|गर्ल्स/u', $lower)) {
-            $found['gender'] = 'female';
-        } elseif (preg_match('/\b(boys?|male|gents|men)\b|लड़कों|बॉयज/u', $lower)) {
-            $found['gender'] = 'male';
-        }
-
-        return $found;
-    }
-
     /** What the visitor reads when the AI cannot answer (bad key, Google down). Searching PGs still works. */
     private function unavailable(string $language): string
     {
@@ -101,8 +80,20 @@ class ChatAiService
             : 'Sorry, the assistant cannot answer that right now. To find a PG, type something like "PG in Noida under 10000", or search on Pizi.in. 🙏';
     }
 
-    public function processMessage($message, $language = 'en', array $history = [])
+    public function processMessage($message, $language = 'en', array $history = [], ?string $sessionId = null)
     {
+        $search = app(ChatPgSearch::class);
+
+        // the answer to our own "which area?" question
+        try {
+            $reply = $search->followUp($message, $language, $sessionId, fn (string $m) => $this->detectIntent($m, $language));
+            if ($reply !== null) {
+                return $reply;
+            }
+        } catch (\Throwable $e) {
+            Log::error('PG search error: ' . $e->getMessage());
+        }
+
         // First, use Gemini to understand the intent
         $intent = $this->detectIntent($message, $language);
 
@@ -113,8 +104,8 @@ class ChatAiService
         // hijacked every message into a property-search dump.
         $looksLikePgQuery = false;
         if (($intent['_source'] ?? 'gemini') === 'fallback') {
-            $pgKeywords = ['pg ', ' pg', 'hostel', 'kiraye', 'coliving', 'girls pg', 'boys pg', 'paying guest'];
-            $lowerMsg = strtolower($message);
+            $pgKeywords = ['pg ', ' pg', 'hostel', 'kiraye', 'coliving', 'paying guest', 'पीजी'];
+            $lowerMsg = mb_strtolower($message);
             foreach ($pgKeywords as $kw) {
                 if (str_contains($lowerMsg, $kw)) {
                     $looksLikePgQuery = true;
@@ -123,18 +114,20 @@ class ChatAiService
             }
         }
 
-        if ($looksLikePgQuery) {
-            $intent += $this->readSearchWords($message);
+        if ($intent['type'] === 'pg_search' || $looksLikePgQuery) {
+            // PG search: asks for the area first when none was given
+            try {
+                return $search->answer($search->read($message, $intent), $language, $sessionId);
+            } catch (\Throwable $e) {
+                Log::error('PG search error: ' . $e->getMessage());
+
+                return $language === 'hi' ? 'कोई error आई। कृपया फिर से कोशिश करें।' : 'An error occurred. Please try again.';
+            }
         }
 
-        if ($intent['type'] === 'pg_search' || $looksLikePgQuery) {
-            // It's a PG search query - extract parameters and search
-            return $this->searchPGsSmart($message, $language, $intent);
-        } else {
-            // It's a general question - use Gemini directly, with recent
-            // conversation context so follow-up questions make sense
-            return $this->getGeminiResponse($message, $language, $history);
-        }
+        // It's a general question - use Gemini directly, with recent
+        // conversation context so follow-up questions make sense
+        return $this->getGeminiResponse($message, $language, $history);
     }
 
     private function detectIntent($message, $language)
@@ -143,7 +136,7 @@ class ChatAiService
 
 User message: \"$message\"
 
-Respond ONLY with JSON (no markdown, no extra text):
+Write city and locality names in English letters. Respond ONLY with JSON (no markdown, no extra text):
 {
   \"type\": \"pg_search\" or \"general\",
   \"keywords\": [list of relevant keywords],
@@ -174,120 +167,6 @@ Respond ONLY with JSON (no markdown, no extra text):
         }
 
         return ['type' => 'general', '_source' => 'fallback'];
-    }
-
-    private function searchPGsSmart($message, $language, $intent)
-    {
-        try {
-            \Log::info('CHATBOT DEBUG', ['message' => $message, 'intent' => $intent]);
-
-            $query = DB::table('properties')
-                ->join('cities', 'cities.id', '=', 'properties.city_id')
-                ->leftJoin('localities', 'localities.id', '=', 'properties.locality_id')
-                ->where('properties.is_active', 1)
-                ->select('properties.*');
-
-            $filtersApplied = false;
-
-            // City filter — EXACT match on cities.name (case-insensitive), taaki "Noida" search karne par
-            // "Greater Noida" ya "Noida Extension" jaisi alag cities galti se na aa jaayein
-            if (!empty($intent['city'])) {
-                $query->whereRaw('LOWER(cities.name) = ?', [strtolower(trim($intent['city']))]);
-                $filtersApplied = true;
-            }
-
-            // Locality/sector filter — matches against the locality name, or
-            // falls back to address/landmark text (many properties don't have
-            // a locality_id set but do mention it in the address).
-            if (!empty($intent['locality'])) {
-                $locality = trim($intent['locality']);
-                $query->where(function ($q) use ($locality) {
-                    $q->where('localities.name', 'like', "%{$locality}%")
-                      ->orWhere('properties.address_line', 'like', "%{$locality}%")
-                      ->orWhere('properties.landmark', 'like', "%{$locality}%");
-                });
-                $filtersApplied = true;
-            }
-
-            // Budget extraction: Gemini se, warna message se regex fallback
-            $budgetMax = $intent['budget_max'] ?? null;
-            $budgetMin = $intent['budget_min'] ?? null;
-
-            if (!$budgetMax && preg_match('/(\d+)\s*k\b/i', $message, $m)) {
-                $budgetMax = (int) $m[1] * 1000;
-            } elseif (!$budgetMax && preg_match('/(\d{4,6})/', $message, $m)) {
-                $budgetMax = (int) $m[1];
-            }
-
-            // Budget filter — property ka POORA range (rent_min se rent_max tak) budget ke andar hona chahiye,
-            // sirf starting price (rent_min) check karna kaafi nahi tha — isi wajah se "under 20000" bolne par
-            // bhi 25-26k wali property dikh jaati thi
-            if ($budgetMax) {
-                $query->where('properties.rent_max', '<=', $budgetMax);
-                $filtersApplied = true;
-            }
-            if ($budgetMin) {
-                $query->where('properties.rent_min', '>=', $budgetMin);
-                $filtersApplied = true;
-            }
-
-            // Gender filter
-            if (!empty($intent['gender']) && in_array($intent['gender'], ['male', 'female', 'unisex'])) {
-                $query->where('properties.gender', $intent['gender']);
-                $filtersApplied = true;
-            }
-
-            // Apply property type filter
-            if (!empty($intent['property_type'])) {
-                $query->where('properties.property_type', $intent['property_type']);
-                $filtersApplied = true;
-            }
-
-            // No specific filter extracted at all ("show me some pgs") — cap
-            // the unfiltered dump to a short preview instead of listing
-            // everything, and nudge the user to narrow it down.
-            $resultLimit = $filtersApplied ? 15 : 5;
-
-            $properties = $query->orderBy('properties.rent_min', 'asc')->limit($resultLimit)->get();
-
-            if ($properties->count() > 0) {
-                // Format results nicely
-                if (!$filtersApplied) {
-                    $response = $language === 'hi'
-                        ? "यहाँ Pizi पर कुछ PGs हैं। बेहतर results के लिए city, sector/locality या budget बताइए:\n\n"
-                        : "Here are a few PGs on Pizi. Tell me a city, sector/locality, or budget for better matches:\n\n";
-                } elseif ($language === 'hi') {
-                    $response = "✅ Pizi पर ये results मिल रहे हैं:\n\n";
-                } else {
-                    $response = "✅ Here are the results on Pizi:\n\n";
-                }
-
-               foreach ($properties as $prop) {
-                    $response .= "🏠 " . $prop->name . "\n";
-                    $response .= "📍 " . substr($prop->address_line, 0, 50) . "\n";
-                    $response .= "💰 ₹" . number_format($prop->rent_min) . " - ₹" . number_format($prop->rent_max) . "\n";
-                    $response .= "👥 " . ucfirst($prop->gender) . "\n";
-                    $response .= "──────────\n\n";
-                }
-
-                if ($language === 'hi') {
-                    $response .= "🔗 और देखने के लिए Pizi.in visit करें!";
-                } else {
-                    $response .= "🔗 Visit Pizi.in to view more details!";
-                }
-
-                return $response;
-            } else {
-                if ($language === 'hi') {
-                    return "😢 इस budget/location के लिए कोई result नहीं मिला। Pizi.in पर सभी PGs browse करें!";
-                } else {
-                    return "😢 No results found for this budget/location. Browse all PGs on Pizi.in!";
-                }
-            }
-        } catch (\Exception $e) {
-            Log::error('PG search error: ' . $e->getMessage());
-            return $language === 'hi' ? 'कोई error आई। कृपया फिर से कोशिश करें।' : 'An error occurred. Please try again.';
-        }
     }
 
     private function getGeminiResponse($message, $language, array $history = [])
