@@ -27,6 +27,7 @@ class ChatAiService
         return array_values(array_unique(array_filter([
             env('GEMINI_MODEL', 'gemini-3.6-flash'),
             env('GEMINI_FALLBACK_MODEL', 'gemini-3.5-flash-lite'),
+            'gemini-3.1-flash-lite', // a last resort: each model has its own free limit
         ])));
     }
 
@@ -46,8 +47,9 @@ class ChatAiService
                 $send = fn (array $payload) => Http::withHeaders(['x-goog-api-key' => (string) $this->geminiApiKey])
                     ->connectTimeout(5)->timeout($seconds)->post($url, $payload);
                 $response = $send($body);
-                // some newer models do not accept the "no thinking" setting: ask again without it
-                if ($response->status() === 400 && str_contains(strtolower((string) $response->json('error.message')), 'thinking')) {
+                // some newer models do not accept the "no thinking" setting, and say only "invalid argument":
+                // after any such refusal, ask again without it
+                if ($response->status() === 400 && isset($body['generationConfig']['thinkingConfig'])) {
                     $plain = $body;
                     unset($plain['generationConfig']['thinkingConfig']);
                     $plain['generationConfig']['maxOutputTokens'] = 4096; // room for the thinking as well as the answer
