@@ -206,7 +206,7 @@
     <div class="max-w-7xl mx-auto px-4 lg:px-8 pt-12 pb-20 lg:pt-20 lg:pb-32">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-stretch">
             <div>
-                <span clWass="pz-anim pz-d1 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-coral-50 text-coral-700 text-xs font-semibold mb-6">
+                <span class="pz-anim pz-d1 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-coral-50 text-coral-700 text-xs font-semibold mb-6">
                     <span class="w-2 h-2 rounded-full bg-coral-500" style="animation: piziPulse 1.6s ease-in-out infinite;"></span>
                     Verified by Pizi field team
                 </span>
@@ -403,6 +403,46 @@
     home.blade.php me purane quicklinks section ko isse REPLACE karo.
     ========================================================================
 --}}
+{{-- CHOOSE YOUR CITY: just above "Browse by what matters": all at once on laptops, one swipeable row on phones --}}
+@php
+    $cityCounts = \Illuminate\Support\Facades\Cache::remember('home_city_pg_counts', 120, fn () => \DB::table('properties')
+        ->join('cities', 'cities.id', '=', 'properties.city_id')
+        ->where('properties.is_active', 1)->whereNull('properties.deleted_at')
+        ->selectRaw('cities.slug as slug, count(*) as c')->groupBy('cities.slug')->pluck('c', 'slug')->toArray());
+@endphp
+@if(isset($cities) && $cities->count())
+<section class="bg-white border-b border-ink-900/10" aria-label="Choose your city">
+    <div class="max-w-7xl mx-auto px-4 lg:px-8 py-5">
+        <div class="flex items-center justify-between gap-3">
+            <h2 class="font-display font-bold text-base sm:text-lg text-ink-950 flex items-center gap-2">
+                <i class="fa-solid fa-location-dot text-coral-500"></i> Choose your city
+            </h2>
+            <div class="hidden md:flex lg:hidden gap-2">
+                <button type="button" onclick="document.getElementById('pzCityRow').scrollBy({left: -500, behavior: 'smooth'})" aria-label="Previous cities"
+                        class="w-8 h-8 rounded-full border border-ink-900/15 text-ink-900 hover:border-coral-500 hover:text-coral-600 transition"><i class="fa-solid fa-chevron-left text-xs"></i></button>
+                <button type="button" onclick="document.getElementById('pzCityRow').scrollBy({left: 500, behavior: 'smooth'})" aria-label="More cities"
+                        class="w-8 h-8 rounded-full border border-ink-900/15 text-ink-900 hover:border-coral-500 hover:text-coral-600 transition"><i class="fa-solid fa-chevron-right text-xs"></i></button>
+            </div>
+        </div>
+        <div id="pzCityRow" class="scrollbar-hide flex gap-3 overflow-x-auto pt-3 pb-2 lg:grid lg:grid-cols-10 lg:justify-items-center lg:gap-y-3 lg:overflow-visible">
+            {{-- cities with PGs come first, then the rest in their set order --}}
+            @foreach($cities->sortBy(fn ($c) => [empty($cityCounts[$c->slug]) ? 1 : 0, $c->display_order, $c->id]) as $city)
+                <a href="{{ route('city.show', $city->slug) }}" class="group relative flex-shrink-0"
+                   title="{{ $city->name }}@if(!empty($cityCounts[$city->slug])): {{ $cityCounts[$city->slug] }} {{ $cityCounts[$city->slug] === 1 ? 'PG' : 'PGs' }}@endif">
+                    <span class="flex flex-col items-center justify-center w-20 h-20 rounded-full bg-[#f6f6f6] text-center group-hover:bg-coral-50 group-hover:-translate-y-1 transition duration-300">
+                        @include('partials.city-icon', ['slug' => $city->slug, 'class' => 'w-10 h-10'])
+                        <span class="mt-0.5 text-[10px] sm:text-[11px] font-bold leading-tight text-slate-900">{{ $city->name }}</span>
+                    </span>
+                    @if(!empty($cityCounts[$city->slug]))
+                        <span class="absolute -top-1 right-0 min-w-[1.25rem] px-1 py-0.5 rounded-full bg-ink-950 text-white text-[10px] font-bold leading-none text-center">{{ $cityCounts[$city->slug] }}</span>
+                    @endif
+                </a>
+            @endforeach
+        </div>
+    </div>
+</section>
+@endif
+
 <section class="relative py-6 overflow-hidden bg-gray-50 text-slate-900 pz-reveal">
 
     <div class="pointer-events-none absolute inset-0 overflow-hidden">
@@ -420,7 +460,7 @@
             <h2 class="font-display font-black text-3xl lg:text-5xl mt-4 text-slate-900">
                 Browse by what <span class="text-coral-400">matters.</span>
             </h2>
-            <p class="text-slate-900 mt-3 text-lg">Pick your budget, type or city — jump straight to matching PGs.</p>
+            <p class="text-slate-900 mt-3 text-lg">Pick your budget or type — jump straight to matching PGs.</p>
         </div>
 
         <div class="space-y-4">
@@ -472,33 +512,6 @@
                             <span class="ml-auto text-coral-400 group-hover:translate-x-1 transition">→</span>
                         </a>
                     @endforeach
-                </div>
-            </div>
-
-            {{-- ===== BOX 3: BY CITY ===== --}}
-            <div class="bg-white/[0.06] backdrop-blur border border-white/10 rounded-3xl p-3 sm:p-5 shadow-xl shadow-black/20">
-                <h3 class="font-display font-bold text-xl text-slate-900 mb-4 flex items-center gap-2"><svg class="inline-block w-[1em] h-[1em] align-[-0.15em]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg> By City</h3>
-                <div class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-10 gap-x-2 gap-y-3">
-                  @php
-    $cityCounts = \Illuminate\Support\Facades\Cache::remember('home_city_pg_counts', 120, fn () => \DB::table('properties')
-        ->join('cities', 'cities.id', '=', 'properties.city_id')
-        ->where('properties.is_active', 1)->whereNull('properties.deleted_at')
-        ->selectRaw('cities.slug as slug, count(*) as c')->groupBy('cities.slug')->pluck('c', 'slug')->toArray());
-@endphp
-                  {{-- cities with PGs come first, then the rest in their set order --}}
-                  @foreach($cities->sortBy(fn ($c) => [empty($cityCounts[$c->slug]) ? 1 : 0, $c->display_order, $c->id]) as $city)
-                    <a href="{{ route('city.show', $city->slug) }}" class="group relative flex justify-center"
-                       title="{{ $city->name }}@if(!empty($cityCounts[$city->slug])): {{ $cityCounts[$city->slug] }} {{ $cityCounts[$city->slug] === 1 ? 'PG' : 'PGs' }}@endif">
-                        {{-- always a circle: it shrinks with its column on small phones --}}
-                        <span class="flex flex-col items-center justify-center w-full max-w-[5rem] aspect-square rounded-full bg-[#f6f6f6] text-center group-hover:bg-coral-50 group-hover:-translate-y-1 group-hover:shadow-lg transition duration-300">
-                            @include('partials.city-icon', ['slug' => $city->slug, 'class' => 'w-8 h-8 sm:w-10 sm:h-10'])
-                            <span class="mt-0.5 text-[10px] sm:text-[11px] font-bold leading-tight text-slate-900">{{ $city->name }}</span>
-                        </span>
-                        @if(!empty($cityCounts[$city->slug]))
-                            <span class="absolute -top-1 right-0 min-w-[1.25rem] px-1 py-0.5 rounded-full bg-ink-950 text-white text-[10px] font-bold leading-none text-center">{{ $cityCounts[$city->slug] }}</span>
-                        @endif
-                    </a>
-                  @endforeach
                 </div>
             </div>
 
