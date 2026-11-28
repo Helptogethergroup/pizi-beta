@@ -908,8 +908,9 @@ class OwnerController extends Controller
                 || str_contains(strtolower($l->phone ?? ''), $term));
         }
 
-        // Sort — default stays the matcher's own area/score ranking.
-        $allMatched = match ($request->get('sort')) {
+        // Sort — newest first by default, same as the website, so a fresh lead is on top;
+        // 'best_match' keeps the matcher's own area/score ranking.
+        $allMatched = match ($request->get('sort') ?: 'newest') {
             'newest' => $allMatched->sortByDesc('created_at'),
             'budget_high' => $allMatched->sortByDesc(fn ($l) => $l->budget_max ?? $l->budget_min ?? 0),
             'budget_low' => $allMatched->sortBy(fn ($l) => $l->budget_min ?? $l->budget_max ?? PHP_INT_MAX),
