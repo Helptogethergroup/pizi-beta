@@ -493,7 +493,8 @@ class OwnerController extends Controller
 
 
 
-        'is_active' => true,
+        // like the website: a new PG goes live only after the admin activates it
+        'is_active' => false,
 
         'is_verified' => false,
 
@@ -541,6 +542,16 @@ class OwnerController extends Controller
     $this->syncLandmarks($request, $id);
     $this->syncAmenities($request, $id);
     $this->storeGalleryImages($request, $id);
+
+    // Tell the admins there is a PG to check (the PG stays saved even if this fails).
+    try {
+        $property = \App\Models\Property::find($id);
+        \App\Models\User::where('role', 'admin')->get()->each(
+            fn ($admin) => $admin->notify(new \App\Notifications\PropertySubmittedForVerification($property))
+        );
+    } catch (\Throwable $e) {
+        \Log::warning('Property submission notification failed: ' . $e->getMessage());
+    }
 
     return $this->ok([
 
